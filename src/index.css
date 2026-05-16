@@ -136,12 +136,13 @@ body{font-family:var(--sans);background:var(--bg);color:var(--white);font-size:1
 
 /* MODAL */
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:1000;display:flex;align-items:center;justify-content:center;padding:1rem;backdrop-filter:blur(4px)}
-.modal{background:#fff;width:100%;max-width:560px;max-height:90vh;overflow-y:auto;color:#1a1a1a}
-.modal-header{padding:1.5rem;border-bottom:1px solid #e8e8e4;display:flex;justify-content:space-between;align-items:center}
-.modal-title{font-family:var(--serif);font-size:1.4rem;color:#1a1a1a}
-.modal-close{background:none;border:none;font-size:1.3rem;cursor:pointer;color:#999;padding:0;line-height:1}
+.modal{background:var(--bg2);width:100%;max-width:560px;max-height:90vh;overflow-y:auto;color:var(--white);border:1px solid var(--border)}
+.modal-header{padding:1.5rem;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+.modal-title{font-family:var(--serif);font-size:1.4rem;color:var(--white);font-weight:300}
+.modal-close{background:none;border:none;font-size:1.3rem;cursor:pointer;color:var(--muted);padding:0;line-height:1;transition:color 0.2s}
+.modal-close:hover{color:var(--white)}
 .modal-body{padding:1.5rem}
-.modal-footer{padding:1rem 1.5rem;border-top:1px solid #e8e8e4;display:flex;justify-content:flex-end;gap:0.75rem}
+.modal-footer{padding:1rem 1.5rem;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:0.75rem}
 
 /* QR MENU (mobile) */
 .qr-menu{min-height:100vh;background:var(--bg);padding-top:0}

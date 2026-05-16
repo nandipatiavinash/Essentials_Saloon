@@ -34,9 +34,9 @@ export default function BookingModal({ services, onClose, onSubmit }) {
           {done ? (
             <div style={{ textAlign: "center", padding: "2rem 0" }}>
               <div style={{ fontSize: "2.5rem", marginBottom: "1rem" }}>✓</div>
-              <div style={{ fontFamily: "var(--serif)", fontSize: "1.5rem", color: "#1a1a1a", marginBottom: "0.5rem" }}>Booking Received</div>
-              <div style={{ fontSize: "0.75rem", color: "#666" }}>We'll confirm via WhatsApp shortly.</div>
-              <button className="btn-add" style={{ marginTop: "1.5rem" }} onClick={onClose}>Close</button>
+              <div style={{ fontFamily: "var(--serif)", fontSize: "1.5rem", color: "var(--white)", marginBottom: "0.5rem" }}>Booking Received</div>
+              <div style={{ fontSize: "0.75rem", color: "var(--muted)" }}>We'll confirm via WhatsApp shortly.</div>
+              <button className="btn-outline" style={{ marginTop: "1.5rem", padding: "0.5rem 1rem", fontSize: "0.6rem" }} onClick={onClose}>Close</button>
             </div>
           ) : (
             <>
@@ -78,8 +78,8 @@ export default function BookingModal({ services, onClose, onSubmit }) {
         </div>
         {!done && (
           <div className="modal-footer">
-            <button className="tbl-btn" onClick={onClose}>Cancel</button>
-            <button className="btn-add" onClick={handleSubmit} disabled={loading}>
+            <button className="btn-outline" onClick={onClose} style={{ padding: "0.5rem 1rem", fontSize: "0.6rem" }}>Cancel</button>
+            <button className="btn-gold" onClick={handleSubmit} disabled={loading} style={{ padding: "0.5rem 1rem", fontSize: "0.6rem" }}>
               {loading ? "Submitting…" : "Confirm Request"}
             </button>
           </div>
