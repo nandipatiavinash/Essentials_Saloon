@@ -8,11 +8,16 @@ export function useAdmin() { return useContext(AdminCtx); }
 
 const navItems = [
   { id: "dashboard", path: "/dashboard", icon: "📊", label: "Dashboard" },
+  { id: "billing", path: "/billing", icon: "🧾", label: "Billing POS" },
+  { id: "clients", path: "/clients", icon: "👤", label: "Clients" },
+  { id: "analytics", path: "/analytics", icon: "📈", label: "Analytics" },
+  { id: "reports", path: "/reports", icon: "💬", label: "Reports" },
   { id: "services", path: "/services", icon: "✂️", label: "Services" },
   { id: "categories", path: "/categories", icon: "📂", label: "Categories" },
   { id: "offers", path: "/offers", icon: "🏷️", label: "Offers" },
   { id: "gallery", path: "/gallery", icon: "🖼️", label: "Gallery" },
   { id: "bookings", path: "/bookings", icon: "📅", label: "Bookings" },
+  { id: "imports", path: "/imports", icon: "📥", label: "Import Sales" },
   { id: "qr", path: "/qr", icon: "⬛", label: "QR Codes" },
   { id: "settings", path: "/settings", icon: "⚙️", label: "Settings" },
 ];
@@ -56,14 +61,21 @@ export default function AdminLayout() {
           </div>
           <nav className="sidebar-nav">
             <div className="sidebar-section">Main</div>
-            {navItems.slice(0, 6).map(n => (
+            {navItems.slice(0, 5).map(n => (
+              <NavLink key={n.id} to={n.path} className={({ isActive }) => `sidebar-item${isActive ? " active" : ""}`}>
+                <span className="sidebar-icon">{n.icon}</span>
+                <span>{n.label}</span>
+              </NavLink>
+            ))}
+            <div className="sidebar-section">Content</div>
+            {navItems.slice(5, 10).map(n => (
               <NavLink key={n.id} to={n.path} className={({ isActive }) => `sidebar-item${isActive ? " active" : ""}`}>
                 <span className="sidebar-icon">{n.icon}</span>
                 <span>{n.label}</span>
               </NavLink>
             ))}
             <div className="sidebar-section">System</div>
-            {navItems.slice(6).map(n => (
+            {navItems.slice(10).map(n => (
               <NavLink key={n.id} to={n.path} className={({ isActive }) => `sidebar-item${isActive ? " active" : ""}`}>
                 <span className="sidebar-icon">{n.icon}</span>
                 <span>{n.label}</span>

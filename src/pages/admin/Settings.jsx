@@ -5,7 +5,7 @@ import toast from "react-hot-toast";
 
 export default function Settings() {
   const { settings, reload } = useAdmin();
-  const [form, setForm] = useState({ name: "", phone: "", email: "", address: "", hours: "", whatsapp: "" });
+  const [form, setForm] = useState({ name: "", phone: "", email: "", address: "", hours: "", whatsapp: "", whatsapp_provider: "meta", eod_report_time: "21:00", report_recipients: "" });
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -16,7 +16,10 @@ export default function Settings() {
         email: settings.email || "",
         address: settings.address || "",
         hours: settings.hours || "",
-        whatsapp: settings.whatsapp || ""
+        whatsapp: settings.whatsapp || "",
+        whatsapp_provider: settings.whatsapp_provider || "meta",
+        eod_report_time: settings.eod_report_time || "21:00",
+        report_recipients: settings.report_recipients || "",
       });
     }
   }, [settings]);
@@ -72,6 +75,25 @@ export default function Settings() {
         <div className="form-group">
           <label className="form-label">Opening Hours</label>
           <textarea className="form-input" rows="2" value={form.hours} onChange={e => set("hours", e.target.value)} placeholder="Mon - Sun: 10:00 AM - 9:00 PM"></textarea>
+        </div>
+
+        <div className="form-row">
+          <div className="form-group">
+            <label className="form-label">WhatsApp Provider</label>
+            <select className="form-input" value={form.whatsapp_provider} onChange={e => set("whatsapp_provider", e.target.value)}>
+              <option value="meta">Meta WhatsApp Cloud API</option>
+              <option value="twilio">Twilio WhatsApp API</option>
+            </select>
+          </div>
+          <div className="form-group">
+            <label className="form-label">EOD Report Time</label>
+            <input className="form-input" type="time" value={form.eod_report_time} onChange={e => set("eod_report_time", e.target.value)} />
+          </div>
+        </div>
+
+        <div className="form-group">
+          <label className="form-label">Report Recipients</label>
+          <input className="form-input" value={form.report_recipients} onChange={e => set("report_recipients", e.target.value)} placeholder="+919876543210, +919000000000" />
         </div>
 
         <div style={{ marginTop: "2rem", paddingTop: "1.5rem", borderTop: "1px solid var(--a-border)", display: "flex", justifyContent: "flex-end" }}>

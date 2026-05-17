@@ -1,6 +1,14 @@
 import { supabase } from "./supabase";
 
 const t = (name) => supabase.from(name);
+const optional = async (promise, fallback) => {
+  const res = await promise;
+  if (res.error) {
+    console.warn("Optional admin data unavailable:", res.error.message);
+    return fallback;
+  }
+  return res.data ?? fallback;
+};
 
 // ─── Fetch all public data ────────────────────────────────────────────────────
 export async function fetchPublicData() {
@@ -24,13 +32,17 @@ export async function fetchPublicData() {
 
 // ─── Fetch all admin data ─────────────────────────────────────────────────────
 export async function fetchAdminData() {
-  const [cats, svcs, offs, gal, settRes, bkgs] = await Promise.all([
+  const [cats, svcs, offs, gal, settRes, bkgs, invoices, customers, transactions, reportLogs] = await Promise.all([
     t("categories").select("*").order("id"),
     t("services").select("*").order("id"),
     t("offers").select("*").order("id"),
     t("gallery").select("*").order("id"),
     t("salon_settings").select("*").eq("id", 1).maybeSingle(),
     t("bookings").select("*").order("created_at", { ascending: false }),
+    optional(t("invoices").select("*, customers(*)").order("billing_at", { ascending: false }).limit(250), []),
+    optional(t("customers").select("*").order("last_visit_at", { ascending: false }).limit(500), []),
+    optional(t("transactions").select("*").order("created_at", { ascending: false }).limit(250), []),
+    optional(t("report_logs").select("*").order("created_at", { ascending: false }).limit(100), []),
   ]);
   const errs = [cats, svcs, offs, gal, settRes, bkgs].map((r) => r.error).filter(Boolean);
   if (errs.length) throw errs[0];
@@ -41,6 +53,10 @@ export async function fetchAdminData() {
     gallery: gal.data ?? [],
     settings: settRes.data ?? {},
     bookings: (bkgs.data ?? []).map(normBooking),
+    invoices: (invoices ?? []).map(normInvoice),
+    customers: (customers ?? []).map(normCustomer),
+    transactions: transactions ?? [],
+    reportLogs: reportLogs ?? [],
   };
 }
 
@@ -144,6 +160,203 @@ export async function updateBookingStatus(id, status) {
   return normBooking(data);
 }
 
+// ─── Salon ERP / POS ─────────────────────────────────────────────────────────
+export async function findCustomerByPhone(phone) {
+  const cleanPhone = normalizePhone(phone);
+  if (!cleanPhone) return null;
+  const { data, error } = await t("customers").select("*").eq("mobile", cleanPhone).maybeSingle();
+  if (error) throw error;
+  return data ? normCustomer(data) : null;
+}
+
+export async function fetchInvoiceDetails(id) {
+  const [invoiceRes, itemsRes] = await Promise.all([
+    t("invoices").select("*, customers(*)").eq("id", id).single(),
+    t("invoice_items").select("*, services(*)").eq("invoice_id", id).order("id"),
+  ]);
+  if (invoiceRes.error) throw invoiceRes.error;
+  if (itemsRes.error) throw itemsRes.error;
+  return {
+    invoice: normInvoice(invoiceRes.data),
+    items: (itemsRes.data ?? []).map((row) => ({
+      id: row.id,
+      service_id: row.service_id,
+      service_name: row.service_name || row.services?.name || "Service",
+      quantity: Number(row.quantity || 1),
+      price: Number(row.price || 0),
+      total: Number(row.total || 0),
+      staff_name: row.staff_name || "",
+    })),
+  };
+}
+
+export async function saveInvoice(payload) {
+  const mobile = normalizePhone(payload.mobile);
+  if (!payload.client_name?.trim()) throw new Error("Client name is required");
+  if (!mobile) throw new Error("A valid mobile number is required");
+  if (!payload.items?.length) throw new Error("Add at least one service");
+
+  const totals = calculateInvoiceTotals(payload);
+  const { data: userRes } = await supabase.auth.getUser();
+
+  const { data: customer, error: customerError } = await t("customers")
+    .upsert({
+      id: payload.customer_id || undefined,
+      name: payload.client_name.trim(),
+      mobile,
+      notes: payload.customer_notes || null,
+      last_visit_at: payload.billing_at || new Date().toISOString(),
+      total_spend: totals.total,
+      visit_count: 1,
+      preferred_services: payload.items.map((item) => item.service_name).filter(Boolean),
+    }, { onConflict: "mobile" })
+    .select()
+    .single();
+  if (customerError) throw customerError;
+
+  const invoiceRow = {
+    invoice_number: payload.invoice_number || makeInvoiceNumber(),
+    customer_id: customer.id,
+    client_name: payload.client_name.trim(),
+    mobile,
+    subtotal: totals.subtotal,
+    discount: totals.discount,
+    tax: totals.tax,
+    tax_rate: Number(payload.tax_rate || 0),
+    total: totals.total,
+    payment_method: payload.payment_method || "Cash",
+    transaction_id: payload.transaction_id || null,
+    notes: payload.notes || null,
+    staff_name: payload.staff_name || null,
+    status: payload.status || "paid",
+    refund_status: payload.refund_status || "none",
+    created_by: userRes?.user?.id || null,
+    billing_at: payload.billing_at || new Date().toISOString(),
+  };
+
+  const invoiceReq = payload.id
+    ? t("invoices").update(invoiceRow).eq("id", payload.id)
+    : t("invoices").insert(invoiceRow);
+  const { data: invoice, error: invoiceError } = await invoiceReq.select().single();
+  if (invoiceError) throw invoiceError;
+
+  if (payload.id) {
+    const { error: deleteError } = await t("invoice_items").delete().eq("invoice_id", payload.id);
+    if (deleteError) throw deleteError;
+  }
+
+  const itemRows = payload.items.map((item) => ({
+    invoice_id: invoice.id,
+    service_id: item.service_id || null,
+    service_name: item.service_name,
+    quantity: Number(item.quantity || 1),
+    price: Number(item.price || 0),
+    total: Number(item.quantity || 1) * Number(item.price || 0),
+    staff_name: item.staff_name || payload.staff_name || null,
+  }));
+  const { error: itemsError } = await t("invoice_items").insert(itemRows);
+  if (itemsError) throw itemsError;
+
+  const { error: txnError } = await t("transactions").upsert({
+    invoice_id: invoice.id,
+    customer_id: customer.id,
+    payment_method: invoice.payment_method,
+    transaction_id: invoice.transaction_id,
+    amount: invoice.total,
+    status: invoice.status === "refunded" ? "refunded" : "success",
+    paid_at: invoice.billing_at,
+  }, { onConflict: "invoice_id" });
+  if (txnError) throw txnError;
+
+  await refreshCustomerRollup(customer.id);
+  return normInvoice({ ...invoice, customers: customer });
+}
+
+export async function searchInvoices(term = "") {
+  const query = t("invoices").select("*, customers(*)").order("billing_at", { ascending: false }).limit(100);
+  if (!term.trim()) {
+    const { data, error } = await query;
+    if (error) throw error;
+    return (data ?? []).map(normInvoice);
+  }
+  const safe = term.trim().replaceAll("%", "");
+  const { data, error } = await query.or(`invoice_number.ilike.%${safe}%,client_name.ilike.%${safe}%,mobile.ilike.%${safe}%,transaction_id.ilike.%${safe}%`);
+  if (error) throw error;
+  return (data ?? []).map(normInvoice);
+}
+
+export async function fetchAnalyticsRange({ from, to } = {}) {
+  let query = t("invoices").select("*, invoice_items(*)").order("billing_at", { ascending: true });
+  if (from) query = query.gte("billing_at", from);
+  if (to) query = query.lte("billing_at", to);
+  const { data, error } = await query;
+  if (error) throw error;
+  return buildAnalytics(data ?? []);
+}
+
+export async function logReport(report) {
+  const { data, error } = await t("report_logs").insert(report).select().single();
+  if (error) throw error;
+  return data;
+}
+
+export async function importHistoricalInvoices(rows, source = {}) {
+  const results = { inserted: 0, skipped: 0, errors: [] };
+  const { data: fileRow, error: fileError } = await t("imported_files")
+    .insert({
+      file_name: source.file_name || "manual-import",
+      file_type: source.file_type || "csv",
+      row_count: rows.length,
+      status: "processing",
+      mapping: source.mapping || {},
+    })
+    .select()
+    .single();
+  if (fileError) throw fileError;
+
+  for (const row of rows) {
+    try {
+      if (row.invoice_number) {
+        const { data: existing, error } = await t("invoices").select("id").eq("invoice_number", row.invoice_number).maybeSingle();
+        if (error) throw error;
+        if (existing) {
+          results.skipped += 1;
+          continue;
+        }
+      }
+      await saveInvoice({
+        client_name: row.client_name,
+        mobile: row.mobile,
+        invoice_number: row.invoice_number || undefined,
+        payment_method: row.payment_method || "Cash",
+        transaction_id: row.transaction_id || "",
+        discount: Number(row.discount || 0),
+        tax_rate: Number(row.tax_rate || 0),
+        notes: row.notes || "Imported historical invoice",
+        staff_name: row.staff_name || "",
+        billing_at: row.billing_at || new Date().toISOString(),
+        items: [{
+          service_id: row.service_id || null,
+          service_name: row.service_name || "Imported service",
+          quantity: Number(row.quantity || 1),
+          price: Number(row.price || row.total || 0),
+        }],
+      });
+      results.inserted += 1;
+    } catch (err) {
+      results.errors.push({ row, message: err.message });
+    }
+  }
+
+  await t("imported_files").update({
+    status: results.errors.length ? "completed_with_errors" : "completed",
+    processed_rows: results.inserted,
+    error_rows: results.errors.length,
+    errors: results.errors.slice(0, 100),
+  }).eq("id", fileRow.id);
+  return results;
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function toRow(d) {
   return {
@@ -179,4 +392,138 @@ function normBooking(row) {
     status: row.status,
     created_at: row.created_at,
   };
+}
+
+export function calculateInvoiceTotals(payload) {
+  const subtotal = (payload.items ?? []).reduce((sum, item) => {
+    return sum + Number(item.quantity || 1) * Number(item.price || 0);
+  }, 0);
+  const discount = Number(payload.discount || 0);
+  const taxable = Math.max(subtotal - discount, 0);
+  const tax = payload.tax_enabled === false ? 0 : taxable * (Number(payload.tax_rate || 0) / 100);
+  return {
+    subtotal: roundMoney(subtotal),
+    discount: roundMoney(discount),
+    tax: roundMoney(tax),
+    total: roundMoney(taxable + tax),
+  };
+}
+
+export function buildAnalytics(invoices = []) {
+  const paid = invoices.filter((invoice) => invoice.status !== "void");
+  const revenue = paid.reduce((sum, invoice) => sum + Number(invoice.total || 0), 0);
+  const paymentBreakdown = groupSum(paid, "payment_method", "total");
+  const byDay = {};
+  const byMonth = {};
+  const byHour = {};
+  const serviceTotals = {};
+  const customerTotals = {};
+
+  paid.forEach((invoice) => {
+    const date = new Date(invoice.billing_at || invoice.created_at);
+    const day = date.toISOString().slice(0, 10);
+    const month = day.slice(0, 7);
+    const hour = String(date.getHours()).padStart(2, "0") + ":00";
+    byDay[day] = (byDay[day] || 0) + Number(invoice.total || 0);
+    byMonth[month] = (byMonth[month] || 0) + Number(invoice.total || 0);
+    byHour[hour] = (byHour[hour] || 0) + Number(invoice.total || 0);
+    customerTotals[invoice.client_name || "Walk-in"] = (customerTotals[invoice.client_name || "Walk-in"] || 0) + Number(invoice.total || 0);
+    (invoice.invoice_items || []).forEach((item) => {
+      const name = item.service_name || "Service";
+      serviceTotals[name] = (serviceTotals[name] || 0) + Number(item.total || 0);
+    });
+  });
+
+  const sortedDays = Object.entries(byDay).sort(([a], [b]) => a.localeCompare(b));
+  const todayKey = new Date().toISOString().slice(0, 10);
+  const monthKey = todayKey.slice(0, 7);
+  const weekAgo = new Date();
+  weekAgo.setDate(weekAgo.getDate() - 6);
+
+  return {
+    revenue: roundMoney(revenue),
+    billCount: paid.length,
+    averageBill: paid.length ? roundMoney(revenue / paid.length) : 0,
+    todayRevenue: roundMoney(byDay[todayKey] || 0),
+    monthlyRevenue: roundMoney(byMonth[monthKey] || 0),
+    weeklyRevenue: roundMoney(sortedDays.filter(([day]) => new Date(day) >= weekAgo).reduce((sum, [, value]) => sum + value, 0)),
+    paymentBreakdown,
+    dailySeries: sortedDays.map(([date, total]) => ({ date, total: roundMoney(total) })),
+    monthlySeries: Object.entries(byMonth).sort(([a], [b]) => a.localeCompare(b)).map(([month, total]) => ({ month, total: roundMoney(total) })),
+    hourlySeries: Object.entries(byHour).sort(([a], [b]) => a.localeCompare(b)).map(([hour, total]) => ({ hour, total: roundMoney(total) })),
+    topServices: topEntries(serviceTotals),
+    topCustomers: topEntries(customerTotals),
+  };
+}
+
+function normInvoice(row) {
+  return {
+    ...row,
+    customer: row.customers || null,
+    subtotal: Number(row.subtotal || 0),
+    discount: Number(row.discount || 0),
+    tax: Number(row.tax || 0),
+    total: Number(row.total || 0),
+  };
+}
+
+function normCustomer(row) {
+  return {
+    ...row,
+    total_spend: Number(row.total_spend || 0),
+    visit_count: Number(row.visit_count || 0),
+  };
+}
+
+function normalizePhone(phone = "") {
+  const digits = String(phone).replace(/\D/g, "");
+  if (digits.length < 8) return "";
+  return digits.length > 10 ? digits.slice(-10) : digits;
+}
+
+function makeInvoiceNumber() {
+  const stamp = new Date().toISOString().slice(0, 10).replaceAll("-", "");
+  return `INV-${stamp}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
+}
+
+function roundMoney(value) {
+  return Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
+}
+
+function groupSum(rows, key, amountKey) {
+  return rows.reduce((acc, row) => {
+    const label = row[key] || "Unknown";
+    acc[label] = roundMoney((acc[label] || 0) + Number(row[amountKey] || 0));
+    return acc;
+  }, {});
+}
+
+function topEntries(obj, limit = 8) {
+  return Object.entries(obj)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, limit)
+    .map(([name, value]) => ({ name, value: roundMoney(value) }));
+}
+
+async function refreshCustomerRollup(customerId) {
+  const { data, error } = await t("invoices")
+    .select("total, billing_at, invoice_items(service_name)")
+    .eq("customer_id", customerId)
+    .neq("status", "void");
+  if (error) return;
+  const totalSpend = (data ?? []).reduce((sum, invoice) => sum + Number(invoice.total || 0), 0);
+  const services = {};
+  let lastVisit = null;
+  (data ?? []).forEach((invoice) => {
+    if (!lastVisit || new Date(invoice.billing_at) > new Date(lastVisit)) lastVisit = invoice.billing_at;
+    (invoice.invoice_items ?? []).forEach((item) => {
+      services[item.service_name] = (services[item.service_name] || 0) + 1;
+    });
+  });
+  await t("customers").update({
+    total_spend: roundMoney(totalSpend),
+    visit_count: data?.length || 0,
+    last_visit_at: lastVisit,
+    preferred_services: topEntries(services, 5).map((item) => item.name),
+  }).eq("id", customerId);
 }

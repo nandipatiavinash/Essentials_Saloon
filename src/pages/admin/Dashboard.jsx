@@ -1,34 +1,35 @@
 import { useAdmin } from "../../layouts/AdminLayout";
 import { Link } from "react-router-dom";
+import { buildAnalytics } from "../../lib/api";
 
 export default function Dashboard() {
-  const { services, bookings, gallery, offers } = useAdmin();
+  const { services, bookings, gallery, offers, invoices, customers } = useAdmin();
 
   const pendingBookings = bookings?.filter(b => b.status === "pending") || [];
-  const revenueToday = 0; // Mock or calculate from completed bookings if prices exist
+  const analytics = buildAnalytics(invoices || []);
 
   return (
     <>
       <div className="stats-grid">
         <div className="stat-card">
+          <div className="stat-label">Today Revenue</div>
+          <div className="stat-value">Rs {analytics.todayRevenue.toLocaleString("en-IN")}</div>
+          <div className="stat-sub">Live billing total</div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-label">Monthly Revenue</div>
+          <div className="stat-value">Rs {analytics.monthlyRevenue.toLocaleString("en-IN")}</div>
+          <div className="stat-sub">{analytics.billCount} invoices tracked</div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-label">Clients</div>
+          <div className="stat-value">{customers?.length || 0}</div>
+          <div className="stat-sub">Customer database</div>
+        </div>
+        <div className="stat-card">
           <div className="stat-label">Pending Bookings</div>
           <div className="stat-value">{pendingBookings.length}</div>
           <div className="stat-sub">Requires attention</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-label">Active Services</div>
-          <div className="stat-value">{services?.filter(s => s.active).length || 0}</div>
-          <div className="stat-sub">Out of {services?.length || 0} total</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-label">Active Offers</div>
-          <div className="stat-value">{offers?.length || 0}</div>
-          <div className="stat-sub">Live on site</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-label">Gallery Items</div>
-          <div className="stat-value">{gallery?.length || 0}</div>
-          <div className="stat-sub">Published photos</div>
         </div>
       </div>
 
@@ -69,10 +70,10 @@ export default function Dashboard() {
         <div className="analytics-card">
           <div className="analytics-card-title">Quick Actions</div>
           <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+            <Link to="/billing" className="tbl-btn" style={{ textAlign: "center", display: "block", textDecoration: "none", padding: "0.8rem" }}>Create Bill</Link>
+            <Link to="/analytics" className="tbl-btn" style={{ textAlign: "center", display: "block", textDecoration: "none", padding: "0.8rem" }}>View Analytics</Link>
+            <Link to="/imports" className="tbl-btn" style={{ textAlign: "center", display: "block", textDecoration: "none", padding: "0.8rem" }}>Import Sales</Link>
             <Link to="/services" className="tbl-btn" style={{ textAlign: "center", display: "block", textDecoration: "none", padding: "0.8rem" }}>Manage Services</Link>
-            <Link to="/gallery" className="tbl-btn" style={{ textAlign: "center", display: "block", textDecoration: "none", padding: "0.8rem" }}>Upload to Gallery</Link>
-            <Link to="/offers" className="tbl-btn" style={{ textAlign: "center", display: "block", textDecoration: "none", padding: "0.8rem" }}>Update Offers</Link>
-            <Link to="/settings" className="tbl-btn" style={{ textAlign: "center", display: "block", textDecoration: "none", padding: "0.8rem" }}>Salon Settings</Link>
           </div>
         </div>
       </div>
