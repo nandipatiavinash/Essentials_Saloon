@@ -272,7 +272,7 @@ export default function BillingPOS() {
 
       <aside className="invoice-preview">
         <div className="preview-card printable">
-          <div className="invoice-brand">{settings?.name || "Toni & Guy Gorantla"}</div>
+          <div className="invoice-brand">{settings?.name || "Toni & Guy Essensuals Gorantla"}</div>
           <div className="invoice-meta">{invoice?.invoice_number || "Draft invoice"}</div>
           <div className="invoice-client">
             <div>

@@ -672,7 +672,7 @@ export async function sendEodEmailReport(reportHtml, textContent, adminEmail) {
     console.warn("Could not log EOD email to DB:", e.message);
   }
 
-  const subject = encodeURIComponent("Toni & Guy Gorantla - EOD Report - " + new Date().toLocaleDateString("en-IN"));
+  const subject = encodeURIComponent("Toni & Guy Essensuals Gorantla - EOD Report - " + new Date().toLocaleDateString("en-IN"));
   const body = encodeURIComponent(textContent);
   window.open(`mailto:${adminEmail}?subject=${subject}&body=${body}`, "_blank");
   return true;

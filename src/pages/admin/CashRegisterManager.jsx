@@ -173,7 +173,7 @@ Notes: ${activeRegister.notes || "None"}
 
       const emailTextBody = `
 =========================================
-TONI & GUY GORANTLA - EOD REPORT
+TONI & GUY ESSENSUALS GORANTLA - EOD REPORT
 Date: ${new Date(date).toLocaleDateString("en-IN")}
 =========================================
 ${salesText}
@@ -182,7 +182,7 @@ ${attendanceText}
 ${inventoryText}
 -----------------------------------------
 Report generated: ${new Date().toLocaleString("en-IN")}
-Toni & Guy Gorantla, Guntur
+Toni & Guy Essensuals Gorantla, Guntur
 `;
 
       const adminEmail = settings.email || "gorantla@essensualssalon.com";

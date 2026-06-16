@@ -67,7 +67,7 @@ export default function PublicLayout() {
     <DataCtx.Provider value={{ ...data, openBooking: () => setBookingOpen(true) }}>
       <nav className="nav">
         <NavLink to="/" className="nav-logo" style={{ textTransform: "none", fontSize: "1.4rem" }}>
-          Toni & Guy<span> Gorantla</span>
+          Toni & Guy Essensuals<span> Gorantla</span>
         </NavLink>
         <ul className="nav-links">
           {navLinks.map(l => (
@@ -104,7 +104,7 @@ export default function PublicLayout() {
       <footer className="footer">
         <div className="footer-top">
           <div>
-            <div className="footer-brand" style={{ textTransform: "none", fontSize: "1.4rem" }}>Toni & Guy<span style={{ color: "var(--gold)" }}> Gorantla</span></div>
+            <div className="footer-brand" style={{ textTransform: "none", fontSize: "1.4rem" }}>Toni & Guy Essensuals<span style={{ color: "var(--gold)" }}> Gorantla</span></div>
             <div className="footer-tagline">A premium luxury salon experience in Guntur. A franchisee of Toni&Guy Essensuals UK.</div>
           </div>
           <div>
@@ -129,7 +129,7 @@ export default function PublicLayout() {
           </div>
         </div>
         <div className="footer-bottom">
-          <div className="footer-copy">© {new Date().getFullYear()} Toni & Guy Gorantla. All rights reserved.</div>
+          <div className="footer-copy">© {new Date().getFullYear()} Toni & Guy Essensuals Gorantla. All rights reserved.</div>
           <div className="footer-copy">Essensuals by Toni&Guy Hairdressing, Gorantla Guntur</div>
         </div>
       </footer>

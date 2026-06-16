@@ -23,7 +23,7 @@ export function buildWhatsAppLink(phone, message) {
 }
 
 export function formatInvoiceMessage(invoice, items = [], settings = {}) {
-  const salon = "Toni & Guy Gorantla";
+  const salon = "Toni & Guy Essensuals Gorantla";
   const branchName = "Essensuals by Toni&Guy Hairdressing, Gorantla Guntur";
   const mapsLink = "https://share.google/APJl5CWwP49v7jOCc";
   const instaLink = "https://www.instagram.com/toniandguy_essensual_gorantla/";
@@ -84,7 +84,7 @@ export function formatInvoiceMessage(invoice, items = [], settings = {}) {
   msg.push(`*Grand Total:* *Rs ${total}*`);
   msg.push(`*Payment Method:* ${invoice.payment_method}`);
   msg.push(`==========================`);
-  msg.push(`Thank you for choosing *Toni & Guy Gorantla*!`);
+  msg.push(`Thank you for choosing *Toni & Guy Essensuals Gorantla*!`);
   msg.push(`We look forward to styling you again soon. 💇✨`);
   msg.push(``);
   msg.push(`📸 *Follow us on Instagram:*`);

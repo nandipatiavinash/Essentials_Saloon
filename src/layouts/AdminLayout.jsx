@@ -68,7 +68,7 @@ export default function AdminLayout() {
       <div className="admin-shell">
         <aside className="admin-sidebar">
           <div className="sidebar-logo">
-            <div className="sidebar-logo-text">Toni & Guy Gorantla</div>
+            <div className="sidebar-logo-text" style={{ fontSize: "1rem" }}>Toni & Guy Essensuals Gorantla</div>
             <div className="sidebar-logo-sub">Admin Panel</div>
           </div>
           <nav className="sidebar-nav">
