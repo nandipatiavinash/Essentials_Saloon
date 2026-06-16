@@ -79,7 +79,7 @@ export default function ServicesManager() {
                   <div style={{ fontSize: "0.65rem", color: "var(--a-muted)" }}>{s.duration || "—"}</div>
                 </td>
                 <td>{categories?.find(c => c.slug === s.category)?.name || s.category}</td>
-                <td>₹{s.price_from} {s.price_to ? ` - ₹${s.price_to}` : ""}</td>
+                <td>₹{s.price_from} {s.price_to ? ` - ₹${s.price_to}` : ""} {s.member_price != null && s.member_price > 0 ? ` (M: ₹${s.member_price})` : ""}</td>
                 <td>
                   <label className="toggle">
                     <input type="checkbox" checked={s.active} onChange={() => handleToggle(s)} />
@@ -134,6 +134,10 @@ export default function ServicesManager() {
                   <div className="form-group">
                     <label className="form-label">Price To (₹)</label>
                     <input type="number" className="form-input" min="0" value={modalObj.price_to || ""} onChange={e => setModalObj({ ...modalObj, price_to: e.target.value })} />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Member Price (₹)</label>
+                    <input type="number" className="form-input" min="0" value={modalObj.member_price || ""} onChange={e => setModalObj({ ...modalObj, member_price: e.target.value })} />
                   </div>
                 </div>
                 <div className="form-group">

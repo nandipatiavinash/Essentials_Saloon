@@ -16,6 +16,10 @@ import ClientsManager from "./pages/admin/ClientsManager";
 import AnalyticsDashboard from "./pages/admin/AnalyticsDashboard";
 import ImportSales from "./pages/admin/ImportSales";
 import ReportsManager from "./pages/admin/ReportsManager";
+import MembershipManager from "./pages/admin/MembershipManager";
+import AttendanceManager from "./pages/admin/AttendanceManager";
+import InventoryManager from "./pages/admin/InventoryManager";
+import CashRegisterManager from "./pages/admin/CashRegisterManager";
 
 function RequireAuth({ children }) {
   const [status, setStatus] = useState("loading"); // loading | authed | unauthed
@@ -55,6 +59,10 @@ export default function AdminApp() {
         <Route path="bookings" element={<BookingsManager />} />
         <Route path="billing" element={<BillingPOS />} />
         <Route path="clients" element={<ClientsManager />} />
+        <Route path="membership" element={<MembershipManager />} />
+        <Route path="attendance" element={<AttendanceManager />} />
+        <Route path="inventory" element={<InventoryManager />} />
+        <Route path="register" element={<CashRegisterManager />} />
         <Route path="analytics" element={<AnalyticsDashboard />} />
         <Route path="imports" element={<ImportSales />} />
         <Route path="reports" element={<ReportsManager />} />

@@ -6,21 +6,33 @@ import { useState, useEffect, createContext, useContext } from "react";
 export const AdminCtx = createContext({});
 export function useAdmin() { return useContext(AdminCtx); }
 
-const navItems = [
+const mainNav = [
   { id: "dashboard", path: "/dashboard", icon: "📊", label: "Dashboard" },
   { id: "billing", path: "/billing", icon: "🧾", label: "Billing POS" },
   { id: "clients", path: "/clients", icon: "👤", label: "Clients" },
-  { id: "analytics", path: "/analytics", icon: "📈", label: "Analytics" },
-  { id: "reports", path: "/reports", icon: "💬", label: "Reports" },
+  { id: "membership", path: "/membership", icon: "⭐", label: "Membership" },
+  { id: "attendance", path: "/attendance", icon: "👥", label: "HR / Attendance" },
+  { id: "register", path: "/register", icon: "💵", label: "Cash Register" },
+];
+
+const contentNav = [
   { id: "services", path: "/services", icon: "✂️", label: "Services" },
   { id: "categories", path: "/categories", icon: "📂", label: "Categories" },
   { id: "offers", path: "/offers", icon: "🏷️", label: "Offers" },
   { id: "gallery", path: "/gallery", icon: "🖼️", label: "Gallery" },
   { id: "bookings", path: "/bookings", icon: "📅", label: "Bookings" },
+  { id: "inventory", path: "/inventory", icon: "📦", label: "Inventory" },
+];
+
+const systemNav = [
+  { id: "analytics", path: "/analytics", icon: "📈", label: "Analytics" },
+  { id: "reports", path: "/reports", icon: "💬", label: "Reports" },
   { id: "imports", path: "/imports", icon: "📥", label: "Import Sales" },
   { id: "qr", path: "/qr", icon: "⬛", label: "QR Codes" },
   { id: "settings", path: "/settings", icon: "⚙️", label: "Settings" },
 ];
+
+const navItems = [...mainNav, ...contentNav, ...systemNav];
 
 export default function AdminLayout() {
   const navigate = useNavigate();
@@ -56,26 +68,26 @@ export default function AdminLayout() {
       <div className="admin-shell">
         <aside className="admin-sidebar">
           <div className="sidebar-logo">
-            <div className="sidebar-logo-text">Essensuals</div>
+            <div className="sidebar-logo-text">Toni & Guy Gorantla</div>
             <div className="sidebar-logo-sub">Admin Panel</div>
           </div>
           <nav className="sidebar-nav">
             <div className="sidebar-section">Main</div>
-            {navItems.slice(0, 5).map(n => (
+            {mainNav.map(n => (
               <NavLink key={n.id} to={n.path} className={({ isActive }) => `sidebar-item${isActive ? " active" : ""}`}>
                 <span className="sidebar-icon">{n.icon}</span>
                 <span>{n.label}</span>
               </NavLink>
             ))}
             <div className="sidebar-section">Content</div>
-            {navItems.slice(5, 10).map(n => (
+            {contentNav.map(n => (
               <NavLink key={n.id} to={n.path} className={({ isActive }) => `sidebar-item${isActive ? " active" : ""}`}>
                 <span className="sidebar-icon">{n.icon}</span>
                 <span>{n.label}</span>
               </NavLink>
             ))}
             <div className="sidebar-section">System</div>
-            {navItems.slice(10).map(n => (
+            {systemNav.map(n => (
               <NavLink key={n.id} to={n.path} className={({ isActive }) => `sidebar-item${isActive ? " active" : ""}`}>
                 <span className="sidebar-icon">{n.icon}</span>
                 <span>{n.label}</span>

@@ -23,22 +23,80 @@ export function buildWhatsAppLink(phone, message) {
 }
 
 export function formatInvoiceMessage(invoice, items = [], settings = {}) {
-  const salon = settings.name || "Essensuals Salon";
-  const lines = [
-    `${salon} invoice`,
-    `Bill: ${invoice.invoice_number}`,
-    `Client: ${invoice.client_name}`,
-    `Total: Rs ${Number(invoice.total || 0).toLocaleString("en-IN")}`,
-    `Payment: ${invoice.payment_method}`,
-  ];
-  if (items.length) {
-    lines.push("", "Services:");
-    items.forEach((item) => {
-      lines.push(`- ${item.service_name} x${item.quantity}: Rs ${Number(item.total || 0).toLocaleString("en-IN")}`);
-    });
+  const salon = "Toni & Guy Gorantla";
+  const branchName = "Essensuals by Toni&Guy Hairdressing, Gorantla Guntur";
+  const mapsLink = "https://share.google/APJl5CWwP49v7jOCc";
+  const instaLink = "https://www.instagram.com/toniandguy_essensual_gorantla/";
+  const website = window.location.origin || "https://essensuals-gorantla.com";
+
+  // Check if client is a member
+  const isMember = invoice.customer?.is_member || invoice.is_member;
+  const tier = invoice.customer?.membership_tier || invoice.membership_tier || "Regular";
+  const memberText = isMember ? `Active ${tier} Member` : "Non-Member";
+
+  const dateStr = invoice.billing_at 
+    ? new Date(invoice.billing_at).toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })
+    : new Date().toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+
+  let msg = [];
+  msg.push(`✨ *${salon.toUpperCase()}* ✨`);
+  msg.push(`_${branchName}_`);
+  msg.push(`📞 +91 91002 92525`);
+  msg.push(`==========================`);
+  msg.push(`*INVOICE RECEIPT*`);
+  msg.push(`==========================`);
+  msg.push(`*Receipt No:* ${invoice.invoice_number}`);
+  msg.push(`*Date:* ${dateStr}`);
+  msg.push(`*Client:* ${invoice.client_name}`);
+  msg.push(`*Phone:* +91 ${invoice.mobile}`);
+  msg.push(`*Membership:* ${memberText}`);
+  if (invoice.staff_name) {
+    msg.push(`*Stylist:* ${invoice.staff_name}`);
   }
-  lines.push("", "Thank you for visiting.");
-  return lines.join("\n");
+  msg.push(`--------------------------`);
+  
+  if (items.length) {
+    msg.push(`*SERVICES RENDERED:*`);
+    items.forEach((item) => {
+      const priceVal = Number(item.price).toLocaleString("en-IN", { minimumFractionDigits: 2 });
+      const totalVal = Number(item.total || (item.quantity * item.price)).toLocaleString("en-IN", { minimumFractionDigits: 2 });
+      msg.push(`• *${item.service_name}*`);
+      msg.push(`  ${item.quantity} x Rs ${priceVal} = *Rs ${totalVal}*`);
+    });
+    msg.push(`--------------------------`);
+  }
+
+  const subtotal = Number(invoice.subtotal || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 });
+  const discount = Number(invoice.discount || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 });
+  const tax = Number(invoice.tax || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 });
+  const total = Number(invoice.total || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 });
+
+  msg.push(`*BILL SUMMARY:*`);
+  msg.push(`*Subtotal:* Rs ${subtotal}`);
+  if (Number(invoice.discount) > 0) {
+    msg.push(`*Discount:* -Rs ${discount}`);
+  }
+  if (Number(invoice.tax) > 0) {
+    msg.push(`*GST (5%):* Rs ${tax}`);
+  } else {
+    msg.push(`*GST:* Rs 0.00 (Exempted)`);
+  }
+  msg.push(`*Grand Total:* *Rs ${total}*`);
+  msg.push(`*Payment Method:* ${invoice.payment_method}`);
+  msg.push(`==========================`);
+  msg.push(`Thank you for choosing *Toni & Guy Gorantla*!`);
+  msg.push(`We look forward to styling you again soon. 💇✨`);
+  msg.push(``);
+  msg.push(`📸 *Follow us on Instagram:*`);
+  msg.push(instaLink);
+  msg.push(``);
+  msg.push(`📍 *Find us on Google Maps:*`);
+  msg.push(mapsLink);
+  msg.push(``);
+  msg.push(`🌐 *Visit our Website:*`);
+  msg.push(website);
+
+  return msg.join("\n");
 }
 
 export function formatEodReportMessage(report, settings = {}) {

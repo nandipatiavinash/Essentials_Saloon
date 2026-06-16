@@ -9,10 +9,12 @@ const emptyBill = () => ({
   client_name: "",
   mobile: "",
   customer_id: null,
+  is_member: false,
+  membership_tier: "Regular",
   items: [],
   discount: 0,
-  tax_enabled: false,
-  tax_rate: 18,
+  tax_enabled: true,
+  tax_rate: 5,
   payment_method: "Cash",
   transaction_id: "",
   notes: "",
@@ -53,14 +55,28 @@ export default function BillingPOS() {
     try {
       const customer = await findCustomerByPhone(bill.mobile);
       if (customer) {
-        setBill((current) => ({
-          ...current,
-          customer_id: customer.id,
-          client_name: current.client_name || customer.name,
-          mobile: customer.mobile,
-          customer_notes: customer.notes || "",
-        }));
-        toast.success(`Returning client: ${customer.visit_count} visits`);
+        setBill((current) => {
+          // If customer is a member, update prices of already-added items if applicable
+          const updatedItems = current.items.map(item => {
+            const svc = activeServices.find(s => String(s.id) === String(item.service_id));
+            if (svc && customer.is_member && svc.member_price != null && svc.member_price > 0) {
+              return { ...item, price: svc.member_price };
+            }
+            return item;
+          });
+          return {
+            ...current,
+            customer_id: customer.id,
+            client_name: customer.name,
+            mobile: customer.mobile,
+            customer_notes: customer.notes || "",
+            is_member: !!customer.is_member,
+            membership_tier: customer.membership_tier || "Regular",
+            items: updatedItems,
+          };
+        });
+        const memberInfo = customer.is_member ? ` (${customer.membership_tier} Member)` : "";
+        toast.success(`Client found: ${customer.name}${memberInfo}`);
       }
     } catch (err) {
       toast.error(err.message);
@@ -70,19 +86,25 @@ export default function BillingPOS() {
   const addService = (serviceId) => {
     const service = activeServices.find((svc) => String(svc.id) === String(serviceId));
     if (!service) return;
-    setBill((current) => ({
-      ...current,
-      items: [
-        ...current.items,
-        {
-          service_id: service.id,
-          service_name: service.name,
-          quantity: 1,
-          price: Number(service.price_from || 0),
-          staff_name: current.staff_name || "",
-        },
-      ],
-    }));
+    setBill((current) => {
+      let price = Number(service.price_from || 0);
+      if (current.is_member && service.member_price != null && service.member_price > 0) {
+        price = Number(service.member_price);
+      }
+      return {
+        ...current,
+        items: [
+          ...current.items,
+          {
+            service_id: service.id,
+            service_name: service.name,
+            quantity: 1,
+            price,
+            staff_name: current.staff_name || "",
+          },
+        ],
+      };
+    });
   };
 
   const updateItem = (index, patch) => {
@@ -130,6 +152,8 @@ export default function BillingPOS() {
         transaction_id: details.invoice.transaction_id || "",
         notes: details.invoice.notes || "",
         staff_name: details.invoice.staff_name || "",
+        is_member: details.invoice.customer?.is_member || false,
+        membership_tier: details.invoice.customer?.membership_tier || "Regular",
         billing_at: new Date(details.invoice.billing_at).toISOString().slice(0, 16),
       });
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -142,7 +166,12 @@ export default function BillingPOS() {
 
   const shareInvoice = () => {
     if (!invoice) return;
-    window.open(buildWhatsAppLink(invoice.mobile, formatInvoiceMessage(invoice, invoiceItems, settings)), "_blank", "noopener,noreferrer");
+    const invData = {
+      ...invoice,
+      is_member: bill.is_member,
+      membership_tier: bill.membership_tier
+    };
+    window.open(buildWhatsAppLink(invoice.mobile, formatInvoiceMessage(invData, invoiceItems, settings)), "_blank", "noopener,noreferrer");
   };
 
   return (
@@ -243,9 +272,28 @@ export default function BillingPOS() {
 
       <aside className="invoice-preview">
         <div className="preview-card printable">
-          <div className="invoice-brand">{settings?.name || "Essensuals"}</div>
+          <div className="invoice-brand">{settings?.name || "Toni & Guy Gorantla"}</div>
           <div className="invoice-meta">{invoice?.invoice_number || "Draft invoice"}</div>
-          <div className="invoice-client">{bill.client_name || invoice?.client_name || "Client"}<span>{bill.mobile || invoice?.mobile || ""}</span></div>
+          <div className="invoice-client">
+            <div>
+              {bill.client_name || invoice?.client_name || "Client"}
+              {bill.is_member && (
+                <span style={{ 
+                  marginLeft: "8px", 
+                  background: "#c9b99a", 
+                  color: "#0d0d0d", 
+                  fontSize: "0.55rem", 
+                  padding: "2px 6px", 
+                  fontWeight: "bold",
+                  borderRadius: "2px",
+                  textTransform: "uppercase" 
+                }}>
+                  ★ {bill.membership_tier}
+                </span>
+              )}
+            </div>
+            <span>{bill.mobile || invoice?.mobile || ""}</span>
+          </div>
           <div className="invoice-lines">
             {bill.items.map((item, index) => (
               <div className="invoice-line" key={index}>

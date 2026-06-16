@@ -32,7 +32,7 @@ export async function fetchPublicData() {
 
 // ─── Fetch all admin data ─────────────────────────────────────────────────────
 export async function fetchAdminData() {
-  const [cats, svcs, offs, gal, settRes, bkgs, invoices, customers, transactions, reportLogs] = await Promise.all([
+  const [cats, svcs, offs, gal, settRes, bkgs, invoices, customers, transactions, reportLogs, staff, attendance, inventory, cashRegister] = await Promise.all([
     t("categories").select("*").order("id"),
     t("services").select("*").order("id"),
     t("offers").select("*").order("id"),
@@ -43,6 +43,10 @@ export async function fetchAdminData() {
     optional(t("customers").select("*").order("last_visit_at", { ascending: false }).limit(500), []),
     optional(t("transactions").select("*").order("created_at", { ascending: false }).limit(250), []),
     optional(t("report_logs").select("*").order("created_at", { ascending: false }).limit(100), []),
+    optional(t("staff").select("*").order("name"), []),
+    optional(t("attendance").select("*").order("date", { ascending: false }), []),
+    optional(t("inventory").select("*").order("name"), []),
+    optional(t("cash_register").select("*").order("date", { ascending: false }).limit(60), []),
   ]);
   const errs = [cats, svcs, offs, gal, settRes, bkgs].map((r) => r.error).filter(Boolean);
   if (errs.length) throw errs[0];
@@ -57,6 +61,10 @@ export async function fetchAdminData() {
     customers: (customers ?? []).map(normCustomer),
     transactions: transactions ?? [],
     reportLogs: reportLogs ?? [],
+    staff: staff ?? [],
+    attendance: attendance ?? [],
+    inventory: inventory ?? [],
+    cashRegister: cashRegister ?? [],
   };
 }
 
@@ -366,6 +374,7 @@ function toRow(d) {
     duration: d.duration,
     price_from: d.price_from,
     price_to: d.price_to ?? null,
+    member_price: d.member_price ?? null,
     featured: !!d.featured,
     active: d.active !== false,
     image: d.image,
@@ -376,6 +385,7 @@ function norm(row) {
     ...row,
     price_from: Number(row.price_from),
     price_to: row.price_to != null ? Number(row.price_to) : null,
+    member_price: row.member_price != null ? Number(row.member_price) : null,
     featured: !!row.featured,
     active: !!row.active,
   };
@@ -472,6 +482,10 @@ function normCustomer(row) {
     ...row,
     total_spend: Number(row.total_spend || 0),
     visit_count: Number(row.visit_count || 0),
+    is_member: !!row.is_member,
+    membership_tier: row.membership_tier || "Regular",
+    membership_start: row.membership_start || null,
+    membership_end: row.membership_end || null,
   };
 }
 
@@ -526,4 +540,140 @@ async function refreshCustomerRollup(customerId) {
     last_visit_at: lastVisit,
     preferred_services: topEntries(services, 5).map((item) => item.name),
   }).eq("id", customerId);
+}
+
+// ─── Staff & HR CRUD ──────────────────────────────────────────────────────────
+export async function createStaff(data) {
+  const { data: row, error } = await t("staff").insert(data).select().single();
+  if (error) throw error;
+  return row;
+}
+
+export async function updateStaff(id, data) {
+  const { data: row, error } = await t("staff").update(data).eq("id", id).select().single();
+  if (error) throw error;
+  return row;
+}
+
+export async function deleteStaff(id) {
+  const { error } = await t("staff").delete().eq("id", id);
+  if (error) throw error;
+}
+
+export async function saveAttendance(rows) {
+  const cleanRows = rows.map(r => ({
+    staff_id: r.staff_id,
+    date: r.date,
+    status: r.status,
+    check_in: r.check_in || null,
+    check_out: r.check_out || null,
+    notes: r.notes || null,
+    updated_at: new Date().toISOString()
+  }));
+  const { data, error } = await t("attendance").upsert(cleanRows, { onConflict: "staff_id,date" }).select();
+  if (error) throw error;
+  return data;
+}
+
+// ─── Inventory CRUD ───────────────────────────────────────────────────────────
+export async function createInventoryItem(data) {
+  const { data: row, error } = await t("inventory").insert(data).select().single();
+  if (error) throw error;
+  return row;
+}
+
+export async function updateInventoryItem(id, data) {
+  const { data: row, error } = await t("inventory").update(data).eq("id", id).select().single();
+  if (error) throw error;
+  return row;
+}
+
+export async function deleteInventoryItem(id) {
+  const { error } = await t("inventory").delete().eq("id", id);
+  if (error) throw error;
+}
+
+// ─── Cash Register operations ───────────────────────────────────────────────
+export async function openCashRegister(date, openingCash) {
+  const { data: row, error } = await t("cash_register")
+    .upsert({
+      date,
+      opening_cash: Number(openingCash),
+      status: "open",
+      expenses: 0,
+      expense_notes: "",
+      closed_at: null
+    }, { onConflict: "date" })
+    .select()
+    .single();
+  if (error) throw error;
+  return row;
+}
+
+export async function updateCashRegisterExpenses(id, expenses, expenseNotes) {
+  const { data: row, error } = await t("cash_register")
+    .update({
+      expenses: Number(expenses),
+      expense_notes: expenseNotes,
+      updated_at: new Date().toISOString()
+    })
+    .eq("id", id)
+    .select()
+    .single();
+  if (error) throw error;
+  return row;
+}
+
+export async function closeCashRegister(id, closingCash, notes) {
+  const { data: row, error } = await t("cash_register")
+    .update({
+      closing_cash: Number(closingCash),
+      notes,
+      status: "closed",
+      closed_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    })
+    .eq("id", id)
+    .select()
+    .single();
+  if (error) throw error;
+  return row;
+}
+
+// ─── Customer Membership Update ──────────────────────────────────────────────
+export async function updateCustomerMembership(customerId, details) {
+  const { data: row, error } = await t("customers")
+    .update({
+      is_member: !!details.is_member,
+      membership_tier: details.membership_tier || "Regular",
+      membership_start: details.membership_start || null,
+      membership_end: details.membership_end || null,
+      updated_at: new Date().toISOString()
+    })
+    .eq("id", customerId)
+    .select()
+    .single();
+  if (error) throw error;
+  return normCustomer(row);
+}
+
+// ─── EOD Email Sending ────────────────────────────────────────────────────────
+export async function sendEodEmailReport(reportHtml, textContent, adminEmail) {
+  try {
+    await logReport({
+      report_type: "eod_email",
+      recipient: adminEmail,
+      status: "sent",
+      provider: "mailto",
+      payload: { body: textContent },
+      sent_at: new Date().toISOString()
+    });
+  } catch (e) {
+    console.warn("Could not log EOD email to DB:", e.message);
+  }
+
+  const subject = encodeURIComponent("Toni & Guy Gorantla - EOD Report - " + new Date().toLocaleDateString("en-IN"));
+  const body = encodeURIComponent(textContent);
+  window.open(`mailto:${adminEmail}?subject=${subject}&body=${body}`, "_blank");
+  return true;
 }
