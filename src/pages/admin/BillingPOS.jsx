@@ -4,6 +4,7 @@ import toast from "react-hot-toast";
 import { useAdmin } from "../../layouts/AdminLayout";
 import { calculateInvoiceTotals, fetchInvoiceDetails, findCustomerByPhone, saveInvoice, searchInvoices } from "../../lib/api";
 import { buildWhatsAppLink, formatInvoiceMessage } from "../../lib/whatsapp";
+import SearchableStaffDropdown from "../../components/SearchableStaffDropdown";
 
 const emptyBill = () => ({
   client_name: "",
@@ -11,8 +12,11 @@ const emptyBill = () => ({
   customer_id: null,
   is_member: false,
   membership_tier: "Regular",
+  membership_id: "",
+  membership_end: "",
   items: [],
   discount: 0,
+  tip: 0,
   tax_enabled: true,
   tax_rate: 5,
   payment_method: "Cash",
@@ -23,7 +27,7 @@ const emptyBill = () => ({
 });
 
 export default function BillingPOS() {
-  const { services, settings, reload } = useAdmin();
+  const { services, settings, staff, reload } = useAdmin();
   const [bill, setBill] = useState(emptyBill);
   const [saving, setSaving] = useState(false);
   const [invoice, setInvoice] = useState(null);
@@ -31,6 +35,7 @@ export default function BillingPOS() {
   const [history, setHistory] = useState([]);
   const [search, setSearch] = useState("");
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [attemptedSubmit, setAttemptedSubmit] = useState(false);
 
   const activeServices = useMemo(() => (services || []).filter((svc) => svc.active), [services]);
   const totals = useMemo(() => calculateInvoiceTotals(bill), [bill]);
@@ -50,13 +55,22 @@ export default function BillingPOS() {
     }
   };
 
+  const getDaysRemaining = (endDateStr) => {
+    if (!endDateStr) return 0;
+    const end = new Date(endDateStr);
+    const today = new Date();
+    end.setHours(0,0,0,0);
+    today.setHours(0,0,0,0);
+    const diff = end.getTime() - today.getTime();
+    return Math.ceil(diff / (1000 * 60 * 60 * 24));
+  };
+
   const lookupCustomer = async () => {
-    if (bill.mobile.replace(/\D/g, "").length < 8) return;
+    if (!bill.mobile?.trim()) return;
     try {
       const customer = await findCustomerByPhone(bill.mobile);
       if (customer) {
         setBill((current) => {
-          // If customer is a member, update prices of already-added items if applicable
           const updatedItems = current.items.map(item => {
             const svc = activeServices.find(s => String(s.id) === String(item.service_id));
             if (svc && customer.is_member && svc.member_price != null && svc.member_price > 0) {
@@ -72,11 +86,15 @@ export default function BillingPOS() {
             customer_notes: customer.notes || "",
             is_member: !!customer.is_member,
             membership_tier: customer.membership_tier || "Regular",
+            membership_id: customer.membership_id || "",
+            membership_end: customer.membership_end || "",
             items: updatedItems,
           };
         });
         const memberInfo = customer.is_member ? ` (${customer.membership_tier} Member)` : "";
         toast.success(`Client found: ${customer.name}${memberInfo}`);
+      } else {
+        toast.error("No client profile found for phone or ID.");
       }
     } catch (err) {
       toast.error(err.message);
@@ -120,6 +138,18 @@ export default function BillingPOS() {
 
   const submitBill = async (e) => {
     e.preventDefault();
+    setAttemptedSubmit(true);
+
+    if (!bill.staff_name) {
+      toast.error("Please select a main staff member");
+      return;
+    }
+    const missingItemStaff = bill.items.some(item => !item.staff_name);
+    if (missingItemStaff) {
+      toast.error("Please select a staff member for all services");
+      return;
+    }
+
     setSaving(true);
     try {
       const saved = await saveInvoice({ ...bill, billing_at: new Date(bill.billing_at).toISOString() });
@@ -127,6 +157,7 @@ export default function BillingPOS() {
       setInvoiceItems(bill.items.map((item) => ({ ...item, total: Number(item.quantity || 1) * Number(item.price || 0) })));
       toast.success(saved.id === bill.id ? "Invoice updated" : "Invoice saved");
       setBill(emptyBill());
+      setAttemptedSubmit(false);
       await Promise.all([loadHistory(search), reload()]);
     } catch (err) {
       toast.error(err.message);
@@ -146,6 +177,7 @@ export default function BillingPOS() {
         mobile: details.invoice.mobile,
         items: details.items,
         discount: details.invoice.discount,
+        tip: details.invoice.tip || 0,
         tax_enabled: Number(details.invoice.tax || 0) > 0,
         tax_rate: details.invoice.tax_rate || 0,
         payment_method: details.invoice.payment_method,
@@ -154,8 +186,11 @@ export default function BillingPOS() {
         staff_name: details.invoice.staff_name || "",
         is_member: details.invoice.customer?.is_member || false,
         membership_tier: details.invoice.customer?.membership_tier || "Regular",
+        membership_id: details.invoice.customer?.membership_id || "",
+        membership_end: details.invoice.customer?.membership_end || "",
         billing_at: new Date(details.invoice.billing_at).toISOString().slice(0, 16),
       });
+      setAttemptedSubmit(false);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (err) {
       toast.error(err.message);
@@ -192,14 +227,49 @@ export default function BillingPOS() {
               <input className="form-input pos-input" value={bill.client_name} onChange={(e) => setBill({ ...bill, client_name: e.target.value })} required />
             </div>
             <div className="form-group">
-              <label className="form-label">Mobile Number</label>
-              <input className="form-input pos-input" value={bill.mobile} onBlur={lookupCustomer} onChange={(e) => setBill({ ...bill, mobile: e.target.value })} required />
+              <label className="form-label">Mobile or Membership ID</label>
+              <div style={{ display: "flex", gap: "0.5rem" }}>
+                <input className="form-input pos-input" value={bill.mobile} onChange={(e) => setBill({ ...bill, mobile: e.target.value })} placeholder="Phone or MEM-YYYY-XXXXX" required />
+                <button type="button" className="tbl-btn" onClick={lookupCustomer} style={{ flexShrink: 0 }}>Check Membership</button>
+              </div>
             </div>
           </div>
-          <div className="form-row">
-            <div className="form-group">
+          {bill.is_member && (
+            <div style={{ 
+              marginTop: "0.75rem", 
+              padding: "0.75rem 1rem", 
+              background: "rgba(201,185,154,0.08)", 
+              border: "1px solid rgba(201,185,154,0.3)", 
+              color: "#c9b99a",
+              fontSize: "0.72rem",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center"
+            }}>
+              <div>
+                <strong>★ Active {bill.membership_tier} Member</strong>
+                {bill.membership_id && <span style={{ marginLeft: "10px", opacity: 0.8 }}>ID: {bill.membership_id}</span>}
+              </div>
+              {bill.membership_end && (
+                <div>
+                  Expires: {new Date(bill.membership_end).toLocaleDateString("en-IN")} 
+                  <span style={{ marginLeft: "8px", fontWeight: "bold" }}>
+                    ({getDaysRemaining(bill.membership_end)} days left)
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+          <div className="form-row" style={{ marginTop: "1rem" }}>
+            <div className="form-group" style={{ zIndex: 10 }}>
               <label className="form-label">Staff Name</label>
-              <input className="form-input" value={bill.staff_name} onChange={(e) => setBill({ ...bill, staff_name: e.target.value })} placeholder="Future operator tracking" />
+              <SearchableStaffDropdown
+                staffList={staff}
+                value={bill.staff_name}
+                onChange={(val) => setBill({ ...bill, staff_name: val })}
+                placeholder="Select Staff"
+                isInvalid={attemptedSubmit && !bill.staff_name}
+              />
             </div>
             <div className="form-group">
               <label className="form-label">Billing Date/Time</label>
@@ -219,10 +289,18 @@ export default function BillingPOS() {
 
           <div className="pos-items">
             {bill.items.map((item, index) => (
-              <div className="pos-item" key={`${item.service_id}-${index}`}>
+              <div className="pos-item" key={`${item.service_id}-${index}`} style={{ overflow: "visible" }}>
                 <div>
                   <div className="pos-item-name">{item.service_name}</div>
-                  <input className="mini-input" value={item.staff_name || ""} onChange={(e) => updateItem(index, { staff_name: e.target.value })} placeholder="Staff" />
+                  <div style={{ marginTop: "0.25rem", width: "160px" }}>
+                    <SearchableStaffDropdown
+                      staffList={staff}
+                      value={item.staff_name}
+                      onChange={(val) => updateItem(index, { staff_name: val })}
+                      placeholder="Select Staff"
+                      isInvalid={attemptedSubmit && !item.staff_name}
+                    />
+                  </div>
                 </div>
                 <input className="mini-input qty" type="number" min="1" value={item.quantity} onChange={(e) => updateItem(index, { quantity: e.target.value })} />
                 <input className="mini-input price" type="number" min="0" value={item.price} onChange={(e) => updateItem(index, { price: e.target.value })} />
@@ -239,6 +317,10 @@ export default function BillingPOS() {
             <div className="form-group">
               <label className="form-label">Discount</label>
               <input type="number" min="0" className="form-input" value={bill.discount} onChange={(e) => setBill({ ...bill, discount: e.target.value })} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Tip Amount</label>
+              <input type="number" min="0" className="form-input" value={bill.tip} onChange={(e) => setBill({ ...bill, tip: e.target.value })} />
             </div>
             <div className="form-group">
               <label className="form-label">GST / Tax</label>
@@ -303,10 +385,16 @@ export default function BillingPOS() {
             ))}
           </div>
           <div className="invoice-totals">
-            <div><span>Subtotal</span><strong>Rs {totals.subtotal.toLocaleString("en-IN")}</strong></div>
-            <div><span>Discount</span><strong>Rs {totals.discount.toLocaleString("en-IN")}</strong></div>
-            <div><span>Tax</span><strong>Rs {totals.tax.toLocaleString("en-IN")}</strong></div>
-            <div className="grand"><span>Total</span><strong>Rs {totals.total.toLocaleString("en-IN")}</strong></div>
+            <div><span>Service Total</span><strong>Rs {totals.subtotal.toLocaleString("en-IN")}</strong></div>
+            {totals.discount > 0 && (
+              <div><span>Discount</span><strong>Rs {totals.discount.toLocaleString("en-IN")}</strong></div>
+            )}
+            <div><span>Net Amount (Before GST)</span><strong>Rs {totals.taxable.toLocaleString("en-IN")}</strong></div>
+            <div><span>GST ({bill.tax_enabled ? bill.tax_rate : 0}%)</span><strong>Rs {totals.tax.toLocaleString("en-IN")}</strong></div>
+            {totals.tip > 0 && (
+              <div><span>Tip</span><strong>Rs {totals.tip.toLocaleString("en-IN")}</strong></div>
+            )}
+            <div className="grand"><span>Grand Total</span><strong>Rs {totals.total.toLocaleString("en-IN")}</strong></div>
           </div>
           <div className="invoice-actions no-print">
             <button type="button" className="tbl-btn" onClick={printInvoice}><Printer size={14} /> Print</button>

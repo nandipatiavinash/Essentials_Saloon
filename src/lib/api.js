@@ -171,11 +171,24 @@ export async function updateBookingStatus(id, status) {
   return normBooking(data);
 }
 
+export async function updateBooking(id, data) {
+  const { id: _, created_at: _c, ...rest } = data;
+  const { data: row, error } = await t("bookings").update(rest).eq("id", id).select().single();
+  if (error) throw error;
+  return normBooking(row);
+}
+
 // ─── Salon ERP / POS ─────────────────────────────────────────────────────────
-export async function findCustomerByPhone(phone) {
-  const cleanPhone = normalizePhone(phone);
-  if (!cleanPhone) return null;
-  const { data, error } = await t("customers").select("*").eq("mobile", cleanPhone).maybeSingle();
+export async function findCustomerByPhone(term) {
+  if (!term?.trim()) return null;
+  const cleanPhone = normalizePhone(term);
+  let query = t("customers").select("*");
+  if (cleanPhone) {
+    query = query.or(`mobile.eq.${cleanPhone},membership_id.eq.${term.trim()}`);
+  } else {
+    query = query.eq("membership_id", term.trim());
+  }
+  const { data, error } = await query.maybeSingle();
   if (error) throw error;
   return data ? normCustomer(data) : null;
 }
@@ -234,6 +247,7 @@ export async function saveInvoice(payload) {
     discount: totals.discount,
     tax: totals.tax,
     tax_rate: Number(payload.tax_rate || 0),
+    tip: Number(payload.tip || 0),
     total: totals.total,
     payment_method: payload.payment_method || "Cash",
     transaction_id: payload.transaction_id || null,
@@ -403,6 +417,9 @@ function normBooking(row) {
     time: row.booking_time,
     notes: row.notes,
     status: row.status,
+    follow_up_date: row.follow_up_date || null,
+    follow_up_notes: row.follow_up_notes || "",
+    assigned_staff: row.assigned_staff || "",
     created_at: row.created_at,
   };
 }
@@ -414,12 +431,29 @@ export function calculateInvoiceTotals(payload) {
   const discount = Number(payload.discount || 0);
   const taxable = Math.max(subtotal - discount, 0);
   const tax = payload.tax_enabled === false ? 0 : taxable * (Number(payload.tax_rate || 0) / 100);
+  const tip = Number(payload.tip || 0);
   return {
     subtotal: roundMoney(subtotal),
     discount: roundMoney(discount),
+    taxable: roundMoney(taxable),
     tax: roundMoney(tax),
-    total: roundMoney(taxable + tax),
+    tip: roundMoney(tip),
+    total: roundMoney(taxable + tax + tip),
   };
+}
+
+export function format12HourTime(timeStr) {
+  if (!timeStr) return "—";
+  if (timeStr.includes("AM") || timeStr.includes("PM")) return timeStr;
+  const parts = timeStr.split(":");
+  if (parts.length < 2) return timeStr;
+  let hours = parseInt(parts[0], 10);
+  const minutes = parts[1];
+  const ampm = hours >= 12 ? "PM" : "AM";
+  hours = hours % 12;
+  hours = hours ? hours : 12;
+  const hoursStr = String(hours).padStart(2, "0");
+  return `${hoursStr}:${minutes} ${ampm}`;
 }
 
 export function buildAnalytics(invoices = []) {
@@ -477,6 +511,7 @@ function normInvoice(row) {
     subtotal: Number(row.subtotal || 0),
     discount: Number(row.discount || 0),
     tax: Number(row.tax || 0),
+    tip: Number(row.tip || 0),
     total: Number(row.total || 0),
   };
 }
@@ -490,6 +525,7 @@ function normCustomer(row) {
     membership_tier: row.membership_tier || "Regular",
     membership_start: row.membership_start || null,
     membership_end: row.membership_end || null,
+    membership_id: row.membership_id || null,
   };
 }
 
@@ -670,7 +706,7 @@ export async function sendEodEmailReport(reportHtml, textContent, adminEmail) {
       report_type: "eod_email",
       recipient: adminEmail,
       status: "sent",
-      provider: "mailto",
+      provider: "gmail",
       payload: { body: textContent },
       sent_at: new Date().toISOString()
     });
@@ -680,6 +716,42 @@ export async function sendEodEmailReport(reportHtml, textContent, adminEmail) {
 
   const subject = encodeURIComponent("Toni & Guy Essensuals Gorantla - EOD Report - " + new Date().toLocaleDateString("en-IN"));
   const body = encodeURIComponent(textContent);
-  window.open(`mailto:${adminEmail}?subject=${subject}&body=${body}`, "_blank");
+  window.open(`https://mail.google.com/mail/?view=cm&fs=1&to=${adminEmail}&su=${subject}&body=${body}`, "_blank");
   return true;
+}
+
+export async function uploadImage(file, bucketName = "salon-images") {
+  const fileExt = file.name.split(".").pop();
+  const fileName = `${Math.random().toString(36).substring(2, 15)}_${Date.now()}.${fileExt}`;
+  const filePath = `uploads/${fileName}`;
+
+  const { data, error } = await supabase.storage
+    .from(bucketName)
+    .upload(filePath, file);
+
+  if (error) throw error;
+
+  const { data: { publicUrl } } = supabase.storage
+    .from(bucketName)
+    .getPublicUrl(filePath);
+
+  return publicUrl;
+}
+
+export async function createCustomer(data) {
+  const { data: row, error } = await t("customers")
+    .upsert({
+      name: data.name.trim(),
+      mobile: data.mobile.trim(),
+      notes: data.notes || null,
+      is_member: !!data.is_member,
+      membership_tier: data.membership_tier || "Regular",
+      membership_start: data.membership_start || null,
+      membership_end: data.membership_end || null,
+      membership_id: data.membership_id || null,
+    }, { onConflict: "mobile" })
+    .select()
+    .single();
+  if (error) throw error;
+  return normCustomer(row);
 }

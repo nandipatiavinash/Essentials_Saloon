@@ -8,6 +8,7 @@ import { buildWhatsAppLink, formatEodReportMessage, getWhatsAppProvider } from "
 export default function AnalyticsDashboard() {
   const { invoices, customers, settings } = useAdmin();
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [selectedDate, setSelectedDate] = useState(null);
   const analytics = useMemo(() => buildAnalytics(invoices || []), [invoices]);
   const today = new Date().toISOString().slice(0, 10);
   const todayInvoices = (invoices || []).filter((invoice) => invoice.billing_at?.slice(0, 10) === today);
@@ -24,6 +25,14 @@ export default function AnalyticsDashboard() {
     repeatCustomers: todayInvoices.filter((invoice) => Number(invoice.customer?.visit_count || 0) > 1).length,
   };
 
+  const selectedDateInvoices = useMemo(() => {
+    if (!selectedDate) return [];
+    return (invoices || []).filter(inv => {
+      const invDate = inv.billing_at ? inv.billing_at.slice(0, 10) : "";
+      return invDate === selectedDate && inv.status !== "void";
+    });
+  }, [invoices, selectedDate]);
+
   const sendEodReport = async () => {
     const message = formatEodReportMessage(report, settings);
     try {
@@ -39,6 +48,89 @@ export default function AnalyticsDashboard() {
     } catch (err) {
       toast.error(err.message);
     }
+  };
+
+  const exportCSV = () => {
+    if (!selectedDateInvoices.length) return;
+    const headers = ["Invoice Number", "Client Name", "Mobile", "Amount", "Payment Method", "Stylist", "Notes"];
+    const rows = selectedDateInvoices.map(inv => [
+      inv.invoice_number,
+      inv.client_name,
+      inv.mobile,
+      inv.total,
+      inv.payment_method,
+      inv.staff_name || "—",
+      inv.notes || ""
+    ]);
+    const csvContent = "data:text/csv;charset=utf-8," 
+      + [headers.join(","), ...rows.map(e => e.map(val => `"${String(val).replace(/"/g, '""')}"`).join(","))].join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `invoices_${selectedDate}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const exportPDF = () => {
+    if (!selectedDateInvoices.length) return;
+    const printWindow = window.open("", "_blank");
+    const html = `
+      <html>
+        <head>
+          <title>Daily Sales Report - ${selectedDate}</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 20px; color: #333; }
+            h1 { font-size: 18px; margin-bottom: 5px; }
+            h2 { font-size: 14px; color: #666; margin-bottom: 20px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; font-size: 12px; }
+            th { background-color: #f2f2f2; }
+            .total { text-align: right; font-weight: bold; margin-top: 20px; font-size: 14px; }
+          </style>
+        </head>
+        <body>
+          <h1>Daily Sales Report - ${settings?.name || "Toni & Guy Essensuals"}</h1>
+          <h2>Date: ${new Date(selectedDate).toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })}</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>Invoice Number</th>
+                <th>Client Name</th>
+                <th>Mobile</th>
+                <th>Stylist</th>
+                <th>Payment Method</th>
+                <th>Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${selectedDateInvoices.map(inv => `
+                <tr>
+                  <td>${inv.invoice_number}</td>
+                  <td>${inv.client_name}</td>
+                  <td>${inv.mobile}</td>
+                  <td>${inv.staff_name || "—"}</td>
+                  <td>${inv.payment_method}</td>
+                  <td>Rs ${Number(inv.total).toLocaleString("en-IN")}</td>
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>
+          <div class="total">
+            Total Sales: Rs ${selectedDateInvoices.reduce((sum, inv) => sum + Number(inv.total), 0).toLocaleString("en-IN")}
+          </div>
+          <script>
+            window.onload = function() {
+              window.print();
+              window.close();
+            };
+          </script>
+        </body>
+      </html>
+    `;
+    printWindow.document.write(html);
+    printWindow.document.close();
   };
 
   return (
@@ -77,12 +169,75 @@ export default function AnalyticsDashboard() {
         <div className="table-header">
           <div>
             <div className="table-title"><CalendarDays size={15} /> Sales Calendar</div>
-            <div className="pos-sub">Click any date mentally: matching invoices are listed below the month.</div>
+            <div className="pos-sub">Click any date cell to view daily invoices and export details.</div>
           </div>
           <input className="form-input month-input" type="month" value={month} onChange={(e) => setMonth(e.target.value)} />
         </div>
-        <SalesCalendar month={month} invoices={invoices || []} />
+        <SalesCalendar month={month} invoices={invoices || []} onCellClick={setSelectedDate} />
       </div>
+
+      {selectedDate && (
+        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setSelectedDate(null)}>
+          <div className="modal" style={{ maxWidth: "800px", width: "90%" }}>
+            <div className="modal-header">
+              <div className="modal-title">
+                Sales Drill-down: {new Date(selectedDate).toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })}
+              </div>
+              <button className="modal-close" onClick={() => setSelectedDate(null)}>✕</button>
+            </div>
+            <div className="modal-body" style={{ maxHeight: "450px", overflowY: "auto" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "1rem", gap: "1rem" }}>
+                <div style={{ fontSize: "0.8rem" }}>
+                  Total Invoices: <strong>{selectedDateInvoices.length}</strong> | Total Sales: <strong style={{ color: "#c9b99a" }}>Rs {selectedDateInvoices.reduce((sum, inv) => sum + Number(inv.total), 0).toLocaleString("en-IN")}</strong>
+                </div>
+                <div style={{ display: "flex", gap: "0.5rem" }}>
+                  <button className="tbl-btn" onClick={exportCSV}>Export CSV</button>
+                  <button className="tbl-btn" onClick={exportPDF}>Export PDF</button>
+                </div>
+              </div>
+
+              {selectedDateInvoices.length > 0 ? (
+                <table style={{ width: "100%", fontSize: "0.75rem" }}>
+                  <thead>
+                    <tr>
+                      <th style={{ textAlign: "left", padding: "8px" }}>Number</th>
+                      <th style={{ textAlign: "left", padding: "8px" }}>Client</th>
+                      <th style={{ textAlign: "left", padding: "8px" }}>Stylist</th>
+                      <th style={{ textAlign: "left", padding: "8px" }}>Method</th>
+                      <th style={{ textAlign: "right", padding: "8px" }}>Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {selectedDateInvoices.map(inv => (
+                      <tr key={inv.id}>
+                        <td style={{ padding: "8px", fontWeight: "600" }}>{inv.invoice_number}</td>
+                        <td style={{ padding: "8px" }}>
+                          <div>{inv.client_name}</div>
+                          <div style={{ fontSize: "0.65rem", color: "#888" }}>{inv.mobile}</div>
+                        </td>
+                        <td style={{ padding: "8px" }}>
+                          {inv.staff_name ? (
+                            <span className="badge badge-gold" style={{ padding: "2px 6px" }}>{inv.staff_name}</span>
+                          ) : "—"}
+                        </td>
+                        <td style={{ padding: "8px" }}>{inv.payment_method}</td>
+                        <td style={{ padding: "8px", textAlign: "right", fontWeight: "bold", color: "#c9b99a" }}>
+                          Rs {Number(inv.total).toLocaleString("en-IN")}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <div style={{ textAlign: "center", padding: "2rem", color: "#888" }}>No invoice records found for this date.</div>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button type="button" className="tbl-btn" onClick={() => setSelectedDate(null)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
@@ -151,7 +306,7 @@ function RankList({ data }) {
   );
 }
 
-function SalesCalendar({ month, invoices }) {
+function SalesCalendar({ month, invoices, onCellClick }) {
   const [year, monthIndex] = month.split("-").map(Number);
   const first = new Date(year, monthIndex - 1, 1);
   const days = new Date(year, monthIndex, 0).getDate();
@@ -176,7 +331,16 @@ function SalesCalendar({ month, invoices }) {
       <div className="sales-calendar">
         {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => <div className="cal-head" key={day}>{day}</div>)}
         {cells.map((cell, index) => cell ? (
-          <div className="cal-cell" key={cell.key} style={{ background: `rgba(201,185,154,${0.12 + (cell.total / max) * 0.58})` }}>
+          <div 
+            className="cal-cell" 
+            key={cell.key} 
+            onClick={() => onCellClick(cell.key)}
+            style={{ 
+              background: `rgba(201,185,154,${0.12 + (cell.total / max) * 0.58})`,
+              cursor: "pointer",
+              transition: "transform 0.15s, box-shadow 0.15s"
+            }}
+          >
             <span>{cell.day}</span>
             <strong>{cell.total ? `Rs ${Math.round(cell.total).toLocaleString("en-IN")}` : "—"}</strong>
           </div>

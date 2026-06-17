@@ -590,7 +590,7 @@ function CustomerApp({ services, categories, offers, gallery, settings, onSwitch
                   <div className="service-name serif">{s.name}</div>
                   <div className="service-desc">{s.description}</div>
                   <div className="service-meta">
-                    <div className="service-price"><span>from</span>₹{s.price_from}{s.price_to ? ` — ${s.price_to}` : ""}</div>
+                    <div className="service-price">₹{s.price_from}</div>
                     <div className="service-dur">{s.duration}</div>
                   </div>
                   <button className="btn-primary" style={{marginTop:"1rem", width:"100%", padding:"0.65rem"}} onClick={() => { setBookForm(f=>({...f, service:s.name})); setBookModal(true); }}>Book This Service</button>
@@ -1051,7 +1051,7 @@ function AdminPanel({ services, setServices, categories, setCategories, offers, 
                       <td style={{fontWeight:500}}>{s.name}</td>
                       <td><span className="badge badge-gold">{s.category}</span></td>
                       <td>{s.duration}</td>
-                      <td>{s.price_from}{s.price_to?` — ${s.price_to}`:""}</td>
+                      <td>{s.price_from}</td>
                       <td>
                         <label className="toggle">
                           <input type="checkbox" checked={!!s.featured} onChange={() => toggleService(s.id,"featured")} />

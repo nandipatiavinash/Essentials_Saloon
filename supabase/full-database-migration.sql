@@ -74,6 +74,9 @@ create table if not exists public.bookings (
   booking_time time,
   notes text,
   status text not null default 'pending' check (status in ('pending', 'confirmed', 'completed', 'cancelled')),
+  follow_up_date date,
+  follow_up_notes text,
+  assigned_staff text,
   created_at timestamptz not null default now()
 );
 
@@ -108,7 +111,8 @@ alter table public.customers
   add column if not exists is_member boolean not null default false,
   add column if not exists membership_tier text not null default 'Regular' check (membership_tier in ('Regular', 'Gold', 'Platinum', 'VVIP')),
   add column if not exists membership_start date,
-  add column if not exists membership_end date;
+  add column if not exists membership_end date,
+  add column if not exists membership_id text unique;
 
 create table if not exists public.invoices (
   id uuid primary key default gen_random_uuid(),
@@ -120,6 +124,7 @@ create table if not exists public.invoices (
   discount numeric not null default 0,
   tax numeric not null default 0,
   tax_rate numeric not null default 0,
+  tip numeric not null default 0,
   total numeric not null default 0,
   payment_method text not null default 'Cash' check (payment_method in ('Cash', 'UPI', 'Card', 'Bank Transfer')),
   transaction_id text,

@@ -35,13 +35,13 @@ export function formatInvoiceMessage(invoice, items = [], settings = {}) {
   const memberText = isMember ? `Active ${tier} Member` : "Non-Member";
 
   const dateStr = invoice.billing_at 
-    ? new Date(invoice.billing_at).toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })
-    : new Date().toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+    ? new Date(invoice.billing_at).toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: true })
+    : new Date().toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: true });
 
   let msg = [];
-  msg.push(`✨ *${salon.toUpperCase()}* ✨`);
+  msg.push(`*${salon.toUpperCase()}*`);
   msg.push(`_${branchName}_`);
-  msg.push(`📞 +91 91002 92525`);
+  msg.push(`Phone: +91 91002 92525`);
   msg.push(`==========================`);
   msg.push(`*INVOICE RECEIPT*`);
   msg.push(`==========================`);
@@ -60,40 +60,53 @@ export function formatInvoiceMessage(invoice, items = [], settings = {}) {
     items.forEach((item) => {
       const priceVal = Number(item.price).toLocaleString("en-IN", { minimumFractionDigits: 2 });
       const totalVal = Number(item.total || (item.quantity * item.price)).toLocaleString("en-IN", { minimumFractionDigits: 2 });
-      msg.push(`• *${item.service_name}*`);
+      msg.push(`- *${item.service_name}*`);
       msg.push(`  ${item.quantity} x Rs ${priceVal} = *Rs ${totalVal}*`);
     });
     msg.push(`--------------------------`);
   }
 
-  const subtotal = Number(invoice.subtotal || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 });
-  const discount = Number(invoice.discount || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 });
-  const tax = Number(invoice.tax || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 });
-  const total = Number(invoice.total || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 });
+  const subtotalVal = Number(invoice.subtotal || 0);
+  const discountVal = Number(invoice.discount || 0);
+  const taxableVal = Math.max(subtotalVal - discountVal, 0);
+  const taxVal = Number(invoice.tax || 0);
+  const tipVal = Number(invoice.tip || 0);
+  const totalVal = Number(invoice.total || 0);
+
+  const subtotal = subtotalVal.toLocaleString("en-IN", { minimumFractionDigits: 2 });
+  const discount = discountVal.toLocaleString("en-IN", { minimumFractionDigits: 2 });
+  const taxable = taxableVal.toLocaleString("en-IN", { minimumFractionDigits: 2 });
+  const tax = taxVal.toLocaleString("en-IN", { minimumFractionDigits: 2 });
+  const tip = tipVal.toLocaleString("en-IN", { minimumFractionDigits: 2 });
+  const total = totalVal.toLocaleString("en-IN", { minimumFractionDigits: 2 });
 
   msg.push(`*BILL SUMMARY:*`);
   msg.push(`*Subtotal:* Rs ${subtotal}`);
-  if (Number(invoice.discount) > 0) {
+  if (discountVal > 0) {
     msg.push(`*Discount:* -Rs ${discount}`);
   }
-  if (Number(invoice.tax) > 0) {
+  msg.push(`*Net Amount:* Rs ${taxable}`);
+  if (taxVal > 0) {
     msg.push(`*GST (5%):* Rs ${tax}`);
   } else {
     msg.push(`*GST:* Rs 0.00 (Exempted)`);
+  }
+  if (tipVal > 0) {
+    msg.push(`*Tip:* Rs ${tip}`);
   }
   msg.push(`*Grand Total:* *Rs ${total}*`);
   msg.push(`*Payment Method:* ${invoice.payment_method}`);
   msg.push(`==========================`);
   msg.push(`Thank you for choosing *Toni & Guy Essensuals Gorantla*!`);
-  msg.push(`We look forward to styling you again soon. 💇✨`);
+  msg.push(`We look forward to styling you again soon.`);
   msg.push(``);
-  msg.push(`📸 *Follow us on Instagram:*`);
+  msg.push(`*Follow us on Instagram:*`);
   msg.push(instaLink);
   msg.push(``);
-  msg.push(`📍 *Find us on Google Maps:*`);
+  msg.push(`*Find us on Google Maps:*`);
   msg.push(mapsLink);
   msg.push(``);
-  msg.push(`🌐 *Visit our Website:*`);
+  msg.push(`*Visit our Website:*`);
   msg.push(website);
 
   return msg.join("\n");

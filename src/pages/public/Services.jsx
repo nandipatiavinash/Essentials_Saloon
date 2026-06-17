@@ -52,7 +52,7 @@ export default function Services() {
                 <div className="service-desc">{s.description}</div>
                 <div className="service-meta">
                   <div className="service-price">
-                    <span>from</span>₹{s.price_from}{s.price_to ? ` — ${s.price_to}` : ""}
+                    ₹{s.price_from}
                     {s.member_price != null && s.member_price > 0 && (
                       <div style={{ fontSize: "0.62rem", color: "#c9b99a", marginTop: "4px", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.05em" }}>
                         ★ Member Price: ₹{s.member_price}
