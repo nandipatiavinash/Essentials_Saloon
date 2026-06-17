@@ -1,8 +1,8 @@
 import { useState, useMemo } from "react";
 import { Clock, MessageSquareText, Mail, FileText, Calendar, Send } from "lucide-react";
 import { useAdmin } from "../../layouts/AdminLayout";
-import { buildAnalytics, sendEodEmailReport, format12HourTime } from "../../lib/api";
-import { formatEodReportMessage, getWhatsAppProvider } from "../../lib/whatsapp";
+import { buildAnalytics, sendEodEmailReport, format12HourTime, logReport } from "../../lib/api";
+import { formatEodReportMessage, getWhatsAppProvider, buildWhatsAppLink } from "../../lib/whatsapp";
 import toast from "react-hot-toast";
 
 export default function ReportsManager() {
@@ -63,8 +63,7 @@ export default function ReportsManager() {
     };
   }, [invoices, customers, today]);
 
-  const handleSendEmailReport = async () => {
-    setSendingEmail(true);
+  const generateUnifiedText = async () => {
     try {
       // Gather data for email date
       const dayInvoices = (invoices || []).filter(inv => inv.billing_at?.slice(0, 10) === emailReportDate && inv.status !== "void");
@@ -108,12 +107,88 @@ export default function ReportsManager() {
       text += `--------------------------------------------------\n\n`;
       text += `Report generated automatically at ${new Date().toLocaleTimeString("en-IN")}\n`;
 
+      return text;
+    } catch (err) {
+      toast.error(err.message || "Failed to generate report text");
+      return null;
+    }
+  };
+
+  const handleSendEmailReport = async () => {
+    setSendingEmail(true);
+    const text = await generateUnifiedText();
+    if (!text) {
+      setSendingEmail(false);
+      return;
+    }
+    try {
       await sendEodEmailReport("", text, emailRecipient);
       toast.success("EOD Email Report prepared!");
     } catch (err) {
-      toast.error(err.message || "Failed to trigger email report");
+      toast.error(err.message || "Failed to send email");
     } finally {
       setSendingEmail(false);
+    }
+  };
+
+  const [sendingWhatsapp, setSendingWhatsapp] = useState(false);
+  const handleSendWhatsappReport = async () => {
+    setSendingWhatsapp(true);
+    const text = await generateUnifiedText();
+    if (!text) {
+      setSendingWhatsapp(false);
+      return;
+    }
+    try {
+      const target = provider.reportRecipients[0] || provider.businessNumber;
+      if (!target) {
+        toast.error("No WhatsApp recipients configured in settings!");
+        return;
+      }
+      await logReport({
+        report_type: "eod_whatsapp",
+        recipient: target,
+        status: "prepared",
+        payload: { body: text },
+      });
+      window.open(buildWhatsAppLink(target, text), "_blank", "noopener,noreferrer");
+      toast.success("EOD WhatsApp Report prepared!");
+    } catch (err) {
+      toast.error(err.message || "Failed to send WhatsApp message");
+    } finally {
+      setSendingWhatsapp(false);
+    }
+  };
+
+  const handleSendBothReports = async () => {
+    setSendingEmail(true);
+    setSendingWhatsapp(true);
+    const text = await generateUnifiedText();
+    if (!text) {
+      setSendingEmail(false);
+      setSendingWhatsapp(false);
+      return;
+    }
+    try {
+      // 1. WhatsApp
+      const target = provider.reportRecipients[0] || provider.businessNumber;
+      if (target) {
+        await logReport({
+          report_type: "eod_whatsapp",
+          recipient: target,
+          status: "prepared",
+          payload: { body: text },
+        });
+        window.open(buildWhatsAppLink(target, text), "_blank", "noopener,noreferrer");
+      }
+      // 2. Email
+      await sendEodEmailReport("", text, emailRecipient);
+      toast.success("EOD Email and WhatsApp Reports prepared!");
+    } catch (err) {
+      toast.error(err.message || "Failed to trigger unified EOD");
+    } finally {
+      setSendingEmail(false);
+      setSendingWhatsapp(false);
     }
   };
 
@@ -213,43 +288,38 @@ export default function ReportsManager() {
         </table>
       </div>
 
-      <div className="reports-grid">
-        {/* Email EOD Report Generator */}
-        <div className="table-wrap">
+      <div className="reports-grid" style={{ gridTemplateColumns: "1fr 1fr", gap: "2rem" }}>
+        {/* Unified EOD Control Center */}
+        <div className="table-wrap" style={{ gridColumn: "span 2" }}>
           <div className="table-header">
             <div>
-              <div className="table-title"><Mail size={15} /> EOD Email Report</div>
-              <div className="pos-sub">Send client lists, services, attendance and cash registry logs</div>
+              <div className="table-title"><Mail size={15} /> Unified Daily EOD Report</div>
+              <div className="pos-sub">Send client lists, services table, attendance and cash logs to both Email and WhatsApp in a unified layout</div>
             </div>
           </div>
-          <div style={{ padding: "1.5rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
-            <div className="form-group">
-              <label className="form-label">Report Date</label>
-              <input type="date" className="form-input" value={emailReportDate} onChange={e => setEmailReportDate(e.target.value)} />
+          <div style={{ padding: "1.5rem", display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+            <div style={{ display: "flex", gap: "1.5rem" }}>
+              <div className="form-group" style={{ flex: 1 }}>
+                <label className="form-label">Report Date</label>
+                <input type="date" className="form-input" value={emailReportDate} onChange={e => setEmailReportDate(e.target.value)} />
+              </div>
+              <div className="form-group" style={{ flex: 1 }}>
+                <label className="form-label">Recipient Email Address</label>
+                <input type="email" className="form-input" placeholder="admin@example.com" value={emailRecipient} onChange={e => setEmailRecipient(e.target.value)} />
+              </div>
             </div>
-            <div className="form-group">
-              <label className="form-label">Recipient Email Address</label>
-              <input type="email" className="form-input" placeholder="admin@example.com" value={emailRecipient} onChange={e => setEmailRecipient(e.target.value)} />
-            </div>
-            <button className="btn-add" onClick={handleSendEmailReport} disabled={sendingEmail} style={{ width: "100%", padding: "0.65rem" }}>
-              {sendingEmail ? "Preparing Email..." : "Send EOD Email Report"}
-            </button>
-          </div>
-        </div>
 
-        {/* WhatsApp EOD summary configuration */}
-        <div className="table-wrap">
-          <div className="table-header">
-            <div>
-              <div className="table-title"><MessageSquareText size={15} /> WhatsApp configurations</div>
-              <div className="pos-sub">Summarize today's sales on WhatsApp</div>
+            <div style={{ display: "flex", gap: "1rem" }}>
+              <button className="btn-add" onClick={handleSendEmailReport} disabled={sendingEmail} style={{ flex: 1, padding: "0.75rem", background: "transparent", border: "1px solid #c9b99a", color: "#c9b99a" }}>
+                {sendingEmail ? "Preparing Email..." : "Send EOD Email"}
+              </button>
+              <button className="btn-add" onClick={handleSendWhatsappReport} disabled={sendingWhatsapp} style={{ flex: 1, padding: "0.75rem", background: "transparent", border: "1px solid #c9b99a", color: "#c9b99a" }}>
+                {sendingWhatsapp ? "Opening WhatsApp..." : "Send EOD WhatsApp"}
+              </button>
+              <button className="btn-add" onClick={handleSendBothReports} disabled={sendingEmail || sendingWhatsapp} style={{ flex: 1, padding: "0.75rem" }}>
+                Send to Both Channels
+              </button>
             </div>
-          </div>
-          <div className="report-settings" style={{ padding: "1.5rem" }}>
-            <div><span>WhatsApp Provider</span><strong>{provider.label}</strong></div>
-            <div><span>Default Time</span><strong>{provider.eodTime}</strong></div>
-            <div><span>Recipients</span><strong>{provider.reportRecipients.join(", ") || "Not configured"}</strong></div>
-            <div><span>Email Support</span><strong>Active EOD System</strong></div>
           </div>
         </div>
       </div>
