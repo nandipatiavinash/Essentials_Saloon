@@ -437,20 +437,32 @@ function normBooking(row) {
 }
 
 export function calculateInvoiceTotals(payload) {
-  const subtotal = (payload.items ?? []).reduce((sum, item) => {
+  const items = payload.items ?? [];
+  // Only service items attract GST; product items are GST-exempt
+  const serviceSubtotal = items.reduce((sum, item) => {
+    if (item.item_type === "product") return sum;
     return sum + Number(item.quantity || 1) * Number(item.price || 0);
   }, 0);
+  const productSubtotal = items.reduce((sum, item) => {
+    if (item.item_type !== "product") return sum;
+    return sum + Number(item.quantity || 1) * Number(item.price || 0);
+  }, 0);
+  const subtotal = serviceSubtotal + productSubtotal;
   const discount = Number(payload.discount || 0);
-  const taxable = Math.max(subtotal - discount, 0);
+  // Discount applied proportionally — only service portion is taxable
+  const serviceAfterDiscount = Math.max(serviceSubtotal - discount, 0);
+  const taxable = serviceAfterDiscount;
   const tax = payload.tax_enabled === false ? 0 : taxable * (Number(payload.tax_rate || 0) / 100);
   const tip = Number(payload.tip || 0);
   return {
     subtotal: roundMoney(subtotal),
+    serviceSubtotal: roundMoney(serviceSubtotal),
+    productSubtotal: roundMoney(productSubtotal),
     discount: roundMoney(discount),
     taxable: roundMoney(taxable),
     tax: roundMoney(tax),
     tip: roundMoney(tip),
-    total: roundMoney(taxable + tax + tip),
+    total: roundMoney(taxable + tax + productSubtotal + tip),
   };
 }
 

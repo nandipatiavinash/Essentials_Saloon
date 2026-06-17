@@ -375,13 +375,15 @@ export default function BillingPOS() {
             ))}
           </div>
           <div className="invoice-totals">
-            <div><span>Total</span><strong>Rs {totals.subtotal.toLocaleString("en-IN")}</strong></div>
+            {totals.serviceSubtotal > 0 && <div><span>Services</span><strong>Rs {totals.serviceSubtotal.toLocaleString("en-IN")}</strong></div>}
+            {totals.productSubtotal > 0 && <div><span>Products <span style={{ fontSize: "0.6rem", opacity: 0.6 }}>(GST exempt)</span></span><strong>Rs {totals.productSubtotal.toLocaleString("en-IN")}</strong></div>}
             {totals.discount > 0 && <div><span>Discount</span><strong>-Rs {totals.discount.toLocaleString("en-IN")}</strong></div>}
-            <div><span>Net Amount (Before GST)</span><strong>Rs {totals.taxable.toLocaleString("en-IN")}</strong></div>
-            <div><span>GST ({bill.tax_enabled ? bill.tax_rate : 0}%)</span><strong>Rs {totals.tax.toLocaleString("en-IN")}</strong></div>
+            {totals.serviceSubtotal > 0 && <div><span>Net Services (Before GST)</span><strong>Rs {totals.taxable.toLocaleString("en-IN")}</strong></div>}
+            <div><span>GST ({bill.tax_enabled ? bill.tax_rate : 0}%) <span style={{ fontSize: "0.6rem", opacity: 0.6 }}>on services</span></span><strong>Rs {totals.tax.toLocaleString("en-IN")}</strong></div>
             {totals.tip > 0 && <div><span>Tip</span><strong>Rs {totals.tip.toLocaleString("en-IN")}</strong></div>}
             <div className="grand"><span>Grand Total</span><strong>Rs {totals.total.toLocaleString("en-IN")}</strong></div>
           </div>
+
           <div className="invoice-actions no-print">
             <button type="button" className="tbl-btn" onClick={printInvoice}><Printer size={14} /> Print</button>
             <button type="button" className="tbl-btn" onClick={shareInvoice} title={!invoice ? "Save the bill first" : "Share via WhatsApp"}>

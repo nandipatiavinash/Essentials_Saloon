@@ -29,93 +29,86 @@ export function buildWhatsAppLink(phone, message) {
 
 export function formatInvoiceMessage(invoice, items = [], settings = {}) {
   const salon = "Toni & Guy Essensuals Gorantla";
-  const branchName = "Essensuals by Toni&Guy Hairdressing, Gorantla Guntur";
   const mapsLink = "https://share.google/APJl5CWwP49v7jOCc";
   const instaLink = "https://www.instagram.com/toniandguy_essensual_gorantla/";
-  const website = window.location.origin || "https://essensuals-gorantla.com";
 
-  // Check if client is a member
+  const clientFirstName = (invoice.client_name || "Valued Client").split(" ")[0];
+
+  // Always use billing_at from the saved invoice (IST from server)
+  const visitDate = invoice.billing_at
+    ? new Date(invoice.billing_at).toLocaleDateString("en-IN", {
+        day: "2-digit", month: "long", year: "numeric",
+        timeZone: "Asia/Kolkata",
+      })
+    : new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric", timeZone: "Asia/Kolkata" });
+
+  // Membership
   const isMember = invoice.customer?.is_member || invoice.is_member;
-  const tier = invoice.customer?.membership_tier || invoice.membership_tier || "Regular";
-  const memberText = isMember ? `Active ${tier} Member` : "Non-Member";
+  const membershipEnd = invoice.customer?.membership_end || invoice.membership_end;
+  const membershipEndStr = membershipEnd
+    ? new Date(membershipEnd).toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" })
+    : null;
 
-  const dateStr = invoice.billing_at 
-    ? new Date(invoice.billing_at).toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: true })
-    : new Date().toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: true });
+  // Services (exclude products from "services" label)
+  const serviceItems = items.filter(item => item.item_type !== "product");
+  const productItems = items.filter(item => item.item_type === "product");
 
-  let msg = [];
+  const totalPaid = Number(invoice.total || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 });
+
+  const msg = [];
+
   msg.push(`*${salon.toUpperCase()}*`);
-  msg.push(`_${branchName}_`);
-  msg.push(`Phone: +91 91002 92525`);
-  msg.push(`==========================`);
-  msg.push(`*INVOICE RECEIPT*`);
-  msg.push(`==========================`);
-  msg.push(`*Receipt No:* ${invoice.invoice_number}`);
-  msg.push(`*Date:* ${dateStr}`);
-  msg.push(`*Client:* ${invoice.client_name}`);
-  msg.push(`*Phone:* +91 ${invoice.mobile}`);
-  msg.push(`*Membership:* ${memberText}`);
-  if (invoice.staff_name) {
-    msg.push(`*Stylist:* ${invoice.staff_name}`);
-  }
-  msg.push(`--------------------------`);
-  
-  if (items.length) {
-    msg.push(`*SERVICES RENDERED:*`);
-    items.forEach((item) => {
-      const priceVal = Number(item.price).toLocaleString("en-IN", { minimumFractionDigits: 2 });
-      const totalVal = Number(item.total || (item.quantity * item.price)).toLocaleString("en-IN", { minimumFractionDigits: 2 });
-      msg.push(`- *${item.service_name}*`);
-      msg.push(`  ${item.quantity} x Rs ${priceVal} = *Rs ${totalVal}*`);
-    });
-    msg.push(`--------------------------`);
-  }
-
-  const subtotalVal = Number(invoice.subtotal || 0);
-  const discountVal = Number(invoice.discount || 0);
-  const taxableVal = Math.max(subtotalVal - discountVal, 0);
-  const taxVal = Number(invoice.tax || 0);
-  const tipVal = Number(invoice.tip || 0);
-  const totalVal = Number(invoice.total || 0);
-
-  const subtotal = subtotalVal.toLocaleString("en-IN", { minimumFractionDigits: 2 });
-  const discount = discountVal.toLocaleString("en-IN", { minimumFractionDigits: 2 });
-  const taxable = taxableVal.toLocaleString("en-IN", { minimumFractionDigits: 2 });
-  const tax = taxVal.toLocaleString("en-IN", { minimumFractionDigits: 2 });
-  const tip = tipVal.toLocaleString("en-IN", { minimumFractionDigits: 2 });
-  const total = totalVal.toLocaleString("en-IN", { minimumFractionDigits: 2 });
-
-  msg.push(`*BILL SUMMARY:*`);
-  msg.push(`*Subtotal:* Rs ${subtotal}`);
-  if (discountVal > 0) {
-    msg.push(`*Discount:* -Rs ${discount}`);
-  }
-  msg.push(`*Net Amount:* Rs ${taxable}`);
-  if (taxVal > 0) {
-    msg.push(`*GST (5%):* Rs ${tax}`);
-  } else {
-    msg.push(`*GST:* Rs 0.00 (Exempted)`);
-  }
-  if (tipVal > 0) {
-    msg.push(`*Tip:* Rs ${tip}`);
-  }
-  msg.push(`*Grand Total:* *Rs ${total}*`);
-  msg.push(`*Payment Method:* ${invoice.payment_method}`);
-  msg.push(`==========================`);
-  msg.push(`Thank you for choosing *Toni & Guy Essensuals Gorantla*!`);
-  msg.push(`We look forward to styling you again soon.`);
+  msg.push(`_Essensuals by Toni&Guy Hairdressing, Gorantla Guntur_`);
   msg.push(``);
-  msg.push(`*Follow us on Instagram:*`);
+  msg.push(`Dear *${clientFirstName}*,`);
+  msg.push(``);
+  msg.push(`Thank you for visiting us on *${visitDate}*! ✂️`);
+  msg.push(`We're thrilled to have had the pleasure of serving you.`);
+  msg.push(``);
+
+  if (serviceItems.length > 0) {
+    msg.push(`*Services enjoyed:*`);
+    serviceItems.forEach((item) => {
+      const qty = Number(item.quantity || 1);
+      msg.push(`  • ${item.service_name}${qty > 1 ? ` x${qty}` : ""}`);
+    });
+  }
+
+  if (productItems.length > 0) {
+    msg.push(``);
+    msg.push(`*Products purchased:*`);
+    productItems.forEach((item) => {
+      const qty = Number(item.quantity || 1);
+      msg.push(`  • ${item.service_name}${qty > 1 ? ` x${qty}` : ""}`);
+    });
+  }
+
+  msg.push(``);
+  msg.push(`*Amount Paid:* Rs ${totalPaid} ✅`);
+  msg.push(`*Invoice:* ${invoice.invoice_number || "—"}`);
+  msg.push(``);
+
+  if (isMember) {
+    msg.push(`*Membership:* ⭐ Active Member`);
+    if (membershipEndStr) {
+      msg.push(`*Valid until:* ${membershipEndStr}`);
+    }
+    msg.push(``);
+  }
+
+  msg.push(`We look forward to seeing you again soon! 💛`);
+  msg.push(``);
+  msg.push(`📸 *Follow us on Instagram:*`);
   msg.push(instaLink);
   msg.push(``);
-  msg.push(`*Find us on Google Maps:*`);
+  msg.push(`📍 *Find us on Google Maps:*`);
   msg.push(mapsLink);
   msg.push(``);
-  msg.push(`*Visit our Website:*`);
-  msg.push(website);
+  msg.push(`_Toni & Guy Essensuals Gorantla | +91 91002 92525_`);
 
   return msg.join("\n");
 }
+
 
 export function formatEodReportMessage(report, settings = {}) {
   const salon = settings.name || "Essensuals Salon";
