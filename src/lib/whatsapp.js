@@ -110,35 +110,55 @@ export function formatInvoiceMessage(invoice, items = [], settings = {}) {
 }
 
 
-export function formatEodReportMessage(report, settings = {}) {
-  const salon = settings.name || "Essensuals Salon";
+export function formatEodReportMessage(report, settings = {}, invoices = []) {
+  const salon = settings.name || "TONI & GUY ESSENSUALS GORANTLA";
   const date = new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
-  const payments = Object.entries(report.paymentBreakdown || {})
-    .map(([method, total]) => `${method}: Rs ${Number(total).toLocaleString("en-IN")}`)
-    .join("\n");
-  const services = (report.topServices || [])
-    .slice(0, 5)
-    .map((item, index) => `${index + 1}. ${item.name} - Rs ${Number(item.value).toLocaleString("en-IN")}`)
-    .join("\n");
+  
+  // Format daily invoice table
+  let tableRows = [];
+  let totalNet = 0;
+  let totalGST = 0;
+  let totalTips = 0;
+  let totalRevenue = 0;
 
-  return [
-    `${salon} EOD report`,
-    date,
-    "",
-    `Revenue: Rs ${Number(report.todayRevenue || 0).toLocaleString("en-IN")}`,
-    `Bills: ${report.todayBills || report.billCount || 0}`,
-    `Average bill: Rs ${Number(report.averageBill || 0).toLocaleString("en-IN")}`,
-    "",
-    "Payment breakdown",
-    payments || "No payments recorded",
-    "",
-    "Top services",
-    services || "No service sales recorded",
-    "",
-    `Peak hour: ${report.peakHour || "Not enough data"}`,
-    `New customers: ${report.newCustomers || 0}`,
-    `Repeat customers: ${report.repeatCustomers || 0}`,
-  ].join("\n");
+  if (invoices && invoices.length > 0) {
+    invoices.forEach(inv => {
+      const clientName = inv.client_name || "—";
+      const serviceNames = (inv.invoice_items || [])
+        .map(item => `${item.service_name} (${item.staff_name || inv.staff_name || "Stylist"})`)
+        .join(", ") || "—";
+      const netAmt = Number(inv.subtotal || 0) - Number(inv.discount || 0);
+      const gst = Number(inv.tax || 0);
+      const tip = Number(inv.tip || 0);
+      const total = Number(inv.total || 0);
+      const payment = inv.payment_method || "—";
+      const stylist = inv.staff_name || "—";
+
+      totalNet += netAmt;
+      totalGST += gst;
+      totalTips += tip;
+      totalRevenue += total;
+
+      tableRows.push(`${clientName} | ${serviceNames} | Rs ${netAmt} | Rs ${gst} | Rs ${tip} | Rs ${total} | ${payment} | ${stylist}`);
+    });
+  }
+
+  const lines = [
+    `==================================================`,
+    `${salon.toUpperCase()} - EOD REPORT`,
+    `Date: ${date}`,
+    `==================================================`,
+    `Client Name | Services | Net | GST | Tip | Total | Payment | Stylist`,
+    `--------------------------------------------------`,
+    tableRows.length > 0 ? tableRows.join("\n") : "No client services recorded today.",
+    `--------------------------------------------------`,
+    `Total Net Sales: Rs ${totalNet}`,
+    `Total GST: Rs ${totalGST}`,
+    `Total Tips: Rs ${totalTips}`,
+    `Total Gross Revenue: Rs ${totalRevenue}`
+  ];
+
+  return lines.join("\n");
 }
 
 export async function sendWhatsAppMessage({ to, message, settings = {} }) {

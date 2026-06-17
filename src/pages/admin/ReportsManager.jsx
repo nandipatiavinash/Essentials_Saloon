@@ -71,34 +71,10 @@ export default function ReportsManager() {
       const dayAttendance = (attendance || []).filter(att => att.date === emailReportDate);
       const dayRegister = (cashRegister || []).find(reg => reg.date === emailReportDate);
 
-      // Generate text report
-      let text = `TONI & GUY ESSENSUALS GORANTLA - DAILY EOD REPORT\n`;
-      text += `Date: ${new Date(emailReportDate).toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })}\n`;
-      text += `==================================================\n\n`;
+      // Generate the primary tabular report using the shared formatter
+      const primaryReportText = formatEodReportMessage(whatsappReport, settings, dayInvoices);
 
-      // Invoices table
-      text += `1. CLIENT INVOICES & REVENUE\n`;
-      text += `--------------------------------------------------\n`;
-      text += `Client Name | Services | Net | GST | Tip | Total | Payment | Stylist\n`;
-      text += `--------------------------------------------------\n`;
-      if (dayInvoices.length > 0) {
-        dayInvoices.forEach(inv => {
-          const serviceNames = (inv.invoice_items || []).map(item => `${item.service_name} (${item.staff_name || inv.staff_name || "Stylist"})`).join(", ");
-          const netAmt = Number(inv.subtotal || 0) - Number(inv.discount || 0);
-          text += `${inv.client_name} | ${serviceNames || "—"} | Rs ${netAmt} | Rs ${inv.tax || 0} | Rs ${inv.tip || 0} | Rs ${inv.total} | ${inv.payment_method} | ${inv.staff_name || "—"}\n`;
-        });
-      } else {
-        text += `No client services recorded today.\n`;
-      }
-      text += `--------------------------------------------------\n`;
-      const totalRevenue = dayInvoices.reduce((sum, inv) => sum + Number(inv.total), 0);
-      const totalGST = dayInvoices.reduce((sum, inv) => sum + Number(inv.tax), 0);
-      const totalTips = dayInvoices.reduce((sum, inv) => sum + Number(inv.tip), 0);
-      const totalNet = dayInvoices.reduce((sum, inv) => sum + (Number(inv.subtotal || 0) - Number(inv.discount || 0)), 0);
-      text += `Total Net Sales: Rs ${totalNet}\n`;
-      text += `Total GST: Rs ${totalGST}\n`;
-      text += `Total Tips: Rs ${totalTips}\n`;
-      text += `Total Gross Revenue: Rs ${totalRevenue}\n\n`;
+      let text = primaryReportText + `\n\n`;
 
       // Attendance
       text += `2. STAFF ATTENDANCE\n`;

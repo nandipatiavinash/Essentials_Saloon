@@ -34,7 +34,7 @@ export default function AnalyticsDashboard() {
   }, [invoices, selectedDate]);
 
   const sendEodReport = async () => {
-    const message = formatEodReportMessage(report, settings);
+    const message = formatEodReportMessage(report, settings, todayInvoices);
     try {
       await logReport({
         report_type: "eod_whatsapp",
