@@ -66,7 +66,7 @@ export default function PublicLayout() {
   return (
     <DataCtx.Provider value={{ ...data, openBooking: () => setBookingOpen(true) }}>
       <nav className="nav">
-        <NavLink to="/" className="nav-logo" style={{ textTransform: "none", fontSize: "1.4rem" }}>
+        <NavLink to="/" className="nav-logo">
           Toni & Guy Essensuals<span> Gorantla</span>
         </NavLink>
         <ul className="nav-links">
