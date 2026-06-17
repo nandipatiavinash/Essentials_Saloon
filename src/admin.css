@@ -230,13 +230,28 @@ input:checked + .toggle-slider::before{transform:translateX(18px)}
 .report-settings strong{font-size:0.78rem}
 
 @media print{
-  body{background:#fff}
-  .admin-sidebar,.admin-topbar,.pos-panel,.history-wrap,.no-print{display:none!important}
-  .admin-main{margin-left:0}
-  .admin-content{padding:0}
-  .pos-grid{display:block}
-  .invoice-preview{border:none}
-  .preview-card{border:none}
+  @page{margin:15mm 12mm;size:A5 portrait}
+  *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  body{background:#fff;font-family:'Montserrat',sans-serif;font-size:10pt;color:#000}
+  .admin-sidebar,.admin-topbar,.pos-panel,.history-wrap,.no-print,
+  .invoice-actions,.tbl-btn,.btn-add{display:none!important}
+  .admin-main{margin-left:0!important;padding:0!important}
+  .admin-content{padding:0!important}
+  .pos-grid{display:block!important}
+  .invoice-preview{border:none!important;padding:0!important;width:100%!important}
+  .preview-card{border:none!important;padding:0!important;box-shadow:none!important;width:100%}
+  .invoice-brand{font-size:14pt;font-weight:800;letter-spacing:0.06em;text-align:center;margin-bottom:4px;color:#000}
+  .invoice-meta{font-size:8pt;text-align:center;color:#555;margin-bottom:12px;border-bottom:1px solid #ccc;padding-bottom:8px}
+  .invoice-client{display:flex;justify-content:space-between;font-size:9pt;margin-bottom:10px;padding-bottom:8px;border-bottom:1px dotted #ccc}
+  .invoice-client div{font-weight:700}
+  .invoice-client span{color:#555;font-size:8pt}
+  .invoice-lines{margin:0 0 10px}
+  .invoice-line{display:flex;justify-content:space-between;font-size:9pt;padding:3px 0;border-bottom:1px dotted #eee}
+  .invoice-line span{flex:1;color:#333}
+  .invoice-line strong{min-width:80px;text-align:right;font-weight:700}
+  .invoice-totals{margin-top:8px;border-top:1.5px solid #000;padding-top:8px}
+  .invoice-totals div{display:flex;justify-content:space-between;font-size:9pt;padding:2px 0}
+  .invoice-totals .grand{border-top:1.5px solid #000;margin-top:6px;padding-top:6px;font-size:11pt;font-weight:800}
 }
 
 /* QR */

@@ -5,6 +5,66 @@ import { createStaff, updateStaff, deleteStaff, saveAttendance, format12HourTime
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 
+// Helper: convert "HH:MM" (24hr) → { hour12, minute, ampm }
+function parse24To12(time24) {
+  if (!time24) return { hour12: "09", minute: "00", ampm: "AM" };
+  const [hStr, mStr] = time24.split(":");
+  let h = parseInt(hStr, 10);
+  const m = mStr || "00";
+  const ampm = h >= 12 ? "PM" : "AM";
+  if (h === 0) h = 12;
+  else if (h > 12) h -= 12;
+  return { hour12: String(h).padStart(2, "0"), minute: m, ampm };
+}
+
+// Helper: convert { hour12, minute, ampm } → "HH:MM" (24hr for DB storage)
+function format12To24(hour12, minute, ampm) {
+  let h = parseInt(hour12, 10);
+  if (ampm === "PM" && h !== 12) h += 12;
+  if (ampm === "AM" && h === 12) h = 0;
+  return `${String(h).padStart(2, "0")}:${minute}`;
+}
+
+// Custom 12-hour AM/PM time picker — no browser 24hr input
+function TimePickerAMPM({ value, onChange, disabled }) {
+  const { hour12, minute, ampm } = parse24To12(value);
+  const hours = ["01","02","03","04","05","06","07","08","09","10","11","12"];
+  const minutes = ["00","05","10","15","20","25","30","35","40","45","50","55"];
+  const selStyle = {
+    padding: "0.28rem 0.3rem",
+    fontSize: "0.72rem",
+    border: "1px solid var(--a-border)",
+    background: disabled ? "#f5f5f0" : "var(--a-bg)",
+    color: disabled ? "#aaa" : "var(--a-text)",
+    fontFamily: "inherit",
+    cursor: disabled ? "not-allowed" : "pointer",
+    outline: "none",
+    borderRadius: "2px",
+  };
+  const handleChange = (field, val) => {
+    const h = field === "h" ? val : hour12;
+    const m = field === "m" ? val : minute;
+    const p = field === "p" ? val : ampm;
+    onChange(format12To24(h, m, p));
+  };
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: "2px" }}>
+      <select disabled={disabled} style={selStyle} value={hour12} onChange={e => handleChange("h", e.target.value)}>
+        {hours.map(h => <option key={h} value={h}>{h}</option>)}
+      </select>
+      <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--a-muted)" }}>:</span>
+      <select disabled={disabled} style={selStyle} value={minute} onChange={e => handleChange("m", e.target.value)}>
+        {minutes.map(m => <option key={m} value={m}>{m}</option>)}
+      </select>
+      <select disabled={disabled} style={{ ...selStyle, fontWeight: 700, color: disabled ? "#aaa" : (ampm === "AM" ? "#1565c0" : "#b71c1c") }} value={ampm} onChange={e => handleChange("p", e.target.value)}>
+        <option value="AM">AM</option>
+        <option value="PM">PM</option>
+      </select>
+    </div>
+  );
+}
+
+
 export default function AttendanceManager() {
   const { staff, attendance, invoices, reload } = useAdmin();
   const navigate = useNavigate();
@@ -246,35 +306,20 @@ export default function AttendanceManager() {
                       </select>
                     </td>
                     <td>
-                      <input 
-                        type="time" 
-                        className="form-input" 
-                        value={log.check_in} 
-                        onChange={e => handleFieldChange(s.id, "check_in", e.target.value)} 
+                      <TimePickerAMPM
+                        value={log.check_in}
+                        onChange={val => handleFieldChange(s.id, "check_in", val)}
                         disabled={log.status === "absent" || log.status === "leave"}
-                        style={{ width: "95px", padding: "0.35rem 0.5rem", fontSize: "0.75rem", marginBottom: "2px" }} 
                       />
-                      {log.check_in && log.status !== "absent" && log.status !== "leave" && (
-                        <div style={{ fontSize: "0.6rem", color: "#c9b99a", textAlign: "center" }}>
-                          {format12HourTime(log.check_in)}
-                        </div>
-                      )}
                     </td>
                     <td>
-                      <input 
-                        type="time" 
-                        className="form-input" 
-                        value={log.check_out} 
-                        onChange={e => handleFieldChange(s.id, "check_out", e.target.value)} 
+                      <TimePickerAMPM
+                        value={log.check_out}
+                        onChange={val => handleFieldChange(s.id, "check_out", val)}
                         disabled={log.status === "absent" || log.status === "leave"}
-                        style={{ width: "95px", padding: "0.35rem 0.5rem", fontSize: "0.75rem", marginBottom: "2px" }} 
                       />
-                      {log.check_out && log.status !== "absent" && log.status !== "leave" && (
-                        <div style={{ fontSize: "0.6rem", color: "#c9b99a", textAlign: "center" }}>
-                          {format12HourTime(log.check_out)}
-                        </div>
-                      )}
                     </td>
+
                     <td>
                       <input 
                         type="text" 

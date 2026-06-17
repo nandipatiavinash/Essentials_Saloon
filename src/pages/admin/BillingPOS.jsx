@@ -28,8 +28,10 @@ const emptyBill = () => ({
 
 export default function BillingPOS() {
   const { services, settings, staff, inventory, reload } = useAdmin();
+  const [searchParams] = useSearchParams();
   const [bill, setBill] = useState(emptyBill);
   const [saving, setSaving] = useState(false);
+  const [billSaved, setBillSaved] = useState(false); // true after a successful save
   const [invoice, setInvoice] = useState(null);
   const [invoiceItems, setInvoiceItems] = useState([]);
   const [history, setHistory] = useState([]);
@@ -42,7 +44,12 @@ export default function BillingPOS() {
   const activeInventory = useMemo(() => (inventory || []).filter(item => Number(item.stock_qty) > 0), [inventory]);
   const totals = useMemo(() => calculateInvoiceTotals(bill), [bill]);
 
-  useEffect(() => { loadHistory(); }, []);
+  useEffect(() => {
+    loadHistory();
+    // If ?inv=ID is in URL (from ClientsManager), auto-load that invoice
+    const invId = searchParams.get("inv");
+    if (invId) editInvoice(invId);
+  }, []);
 
   const loadHistory = async (term = "") => {
     setLoadingHistory(true);
@@ -154,13 +161,24 @@ export default function BillingPOS() {
       const saved = await saveInvoice({ ...bill, billing_at: new Date(bill.billing_at).toISOString() });
       setInvoice(saved);
       setInvoiceItems(bill.items.map((item) => ({ ...item, total: Number(item.quantity || 1) * Number(item.price || 0) })));
-      toast.success(saved.id === bill.id ? "Invoice updated" : "Invoice saved");
-      setBill(emptyBill());
+      // Update bill id/invoice_number but keep data visible
+      setBill(prev => ({ ...prev, id: saved.id, invoice_number: saved.invoice_number }));
+      setBillSaved(true);
       setAttemptedSubmit(false);
+      toast.success(saved.invoice_number + " saved successfully!");
       await Promise.all([loadHistory(search), reload()]);
     } catch (err) {
       toast.error(err.message);
     } finally { setSaving(false); }
+  };
+
+  const startNewBill = () => {
+    setBill(emptyBill());
+    setInvoice(null);
+    setInvoiceItems([]);
+    setBillSaved(false);
+    setAttemptedSubmit(false);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const editInvoice = async (id) => {
@@ -172,7 +190,7 @@ export default function BillingPOS() {
         customer_id: details.invoice.customer_id,
         client_name: details.invoice.client_name,
         mobile: details.invoice.mobile,
-        items: details.items,
+        items: (details.items || []).map(item => ({ ...item, item_type: item.item_type || "service" })),
         discount: details.invoice.discount,
         tip: details.invoice.tip || 0,
         tax_enabled: Number(details.invoice.tax || 0) > 0,
@@ -214,11 +232,42 @@ export default function BillingPOS() {
       <form className="pos-panel" onSubmit={submitBill}>
         <div className="pos-header">
           <div>
-            <div className="table-title">{bill.id ? "Edit Invoice" : "New Billing"}</div>
-            <div className="pos-sub">Fast multi-service/product checkout</div>
+            <div className="table-title">
+              {billSaved ? `✅ ${bill.invoice_number || "Invoice"} — Saved` : bill.id ? "Edit Invoice" : "New Billing"}
+            </div>
+            <div className="pos-sub">
+              {billSaved ? "Bill saved. Print, WhatsApp below — or start a new bill." : "Fast multi-service/product checkout"}
+            </div>
           </div>
-          <button className="btn-add" disabled={saving}>{saving ? "Saving..." : "Save Bill"}</button>
+          <div style={{ display: "flex", gap: "0.5rem" }}>
+            {billSaved && (
+              <button type="button" className="btn-add" style={{ background: "var(--a-bg)", color: "var(--a-text)", border: "1px solid var(--a-border)" }} onClick={startNewBill}>
+                + New Bill
+              </button>
+            )}
+            {!billSaved && (
+              <button className="btn-add" disabled={saving}>{saving ? "Saving..." : "Save Bill"}</button>
+            )}
+          </div>
         </div>
+
+        {/* Saved banner with quick actions */}
+        {billSaved && (
+          <div style={{ margin: "0 0 1rem", padding: "1rem 1.25rem", background: "rgba(46,125,50,0.06)", border: "1px solid rgba(46,125,50,0.3)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem", flexWrap: "wrap" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+              <CheckCircle size={18} color="#2e7d32" />
+              <div>
+                <div style={{ fontSize: "0.82rem", fontWeight: 700, color: "#2e7d32" }}>Bill Saved Successfully</div>
+                <div style={{ fontSize: "0.68rem", color: "#666" }}>{bill.client_name} · {bill.invoice_number}</div>
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: "0.5rem" }}>
+              <button type="button" className="tbl-btn" onClick={printInvoice}><Printer size={13} /> Print</button>
+              <button type="button" className="tbl-btn" onClick={shareInvoice}><Send size={13} /> WhatsApp</button>
+              <button type="button" className="btn-add" onClick={startNewBill}>+ New Bill</button>
+            </div>
+          </div>
+        )}
 
         <div className="pos-section">
           <div className="form-row">

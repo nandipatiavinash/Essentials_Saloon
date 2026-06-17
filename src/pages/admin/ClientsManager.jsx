@@ -1,9 +1,11 @@
 import { useMemo, useState } from "react";
 import { Phone, Search, UserRound } from "lucide-react";
 import { useAdmin } from "../../layouts/AdminLayout";
+import { useNavigate } from "react-router-dom";
 
 export default function ClientsManager() {
   const { customers, invoices } = useAdmin();
+  const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState(null);
 
@@ -109,8 +111,15 @@ export default function ClientsManager() {
                   <div className="timeline-item" key={invoice.id}>
                     <span></span>
                     <div>
-                      <strong>{invoice.invoice_number}</strong>
-                      <small>{new Date(invoice.billing_at).toLocaleString("en-IN")} · {invoice.payment_method}</small>
+                      <button
+                        type="button"
+                        style={{ fontWeight: 700, background: "none", border: "none", cursor: "pointer", color: "#c9b99a", padding: 0, fontSize: "0.82rem", textDecoration: "underline" }}
+                        onClick={() => navigate(`/billing?inv=${invoice.id}`)}
+                        title="Click to view / reprint this invoice"
+                      >
+                        {invoice.invoice_number}
+                      </button>
+                      <small>{new Date(invoice.billing_at).toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: true })} · {invoice.payment_method}</small>
                     </div>
                     <b>Rs {invoice.total.toLocaleString("en-IN")}</b>
                   </div>
