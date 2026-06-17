@@ -47,8 +47,8 @@ export default function Home() {
           <div className="services-grid">
             {featured.slice(0, 4).map((s, i) => (
               <motion.div key={s.id} className="service-card" initial="hidden" whileInView="visible" viewport={{ once: true, margin: "-50px" }} variants={{ hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0, transition: { delay: i * 0.1 } } }}>
-                <div className="badge-featured">Signature</div>
                 <div className="service-body">
+                  <div className="badge-featured">Signature</div>
                   <div className="service-cat">{categories?.find(c => c.slug === s.category)?.name || s.category}</div>
                   <div className="service-name">{s.name}</div>
                   <div className="service-desc">{s.description}</div>

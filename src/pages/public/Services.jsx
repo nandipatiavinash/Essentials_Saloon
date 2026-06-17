@@ -42,8 +42,8 @@ export default function Services() {
         <div className="services-grid">
           {filtered.map((s, i) => (
             <motion.div key={s.id} className="service-card" initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: Math.min(i * 0.05, 0.5) }}>
-              {s.featured && <div className="badge-featured">Featured</div>}
               <div className="service-body">
+                {s.featured && <div className="badge-featured">Featured</div>}
                 <div className="service-cat">{categories?.find(c => c.slug === s.category)?.name || s.category}</div>
                 <div className="service-name">{s.name}</div>
                 <div className="service-desc">{s.description}</div>

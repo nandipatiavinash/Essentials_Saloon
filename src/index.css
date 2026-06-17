@@ -14,8 +14,8 @@ body{font-family:var(--sans);background:var(--bg);color:var(--white);font-size:1
 
 /* NAV */
 .nav{position:fixed;top:0;left:0;right:0;z-index:500;background:rgba(13,13,13,0.95);backdrop-filter:blur(20px);border-bottom:1px solid var(--border);padding:0 5vw;display:flex;align-items:center;justify-content:space-between;height:68px}
-.nav-logo{font-family:var(--serif);font-size:clamp(0.8rem, 4vw, 1.35rem);font-weight:300;letter-spacing:0.06em;text-transform:none;color:var(--white);cursor:pointer;text-decoration:none;white-space:nowrap}
-.nav-logo span{color:var(--gold)}
+.nav-logo{font-family:var(--serif);font-size:clamp(1rem, 4.5vw, 1.6rem);font-weight:300;letter-spacing:0.06em;text-transform:none;color:var(--white);cursor:pointer;text-decoration:none;white-space:nowrap}
+.nav-logo span{color:var(--gold);font-weight:600}
 .nav-links{display:flex;gap:2rem;align-items:center;list-style:none}
 .nav-link{font-size:0.68rem;letter-spacing:0.18em;text-transform:uppercase;color:var(--muted);cursor:pointer;transition:color 0.2s;background:none;border:none;font-family:var(--sans);text-decoration:none;padding:0}
 .nav-link:hover,.nav-link.active{color:var(--white)}
@@ -67,7 +67,7 @@ body{font-family:var(--sans);background:var(--bg);color:var(--white);font-size:1
 .service-price{font-family:var(--serif);font-size:1.1rem;color:var(--white)}
 .service-price span{font-size:0.58rem;font-family:var(--sans);letter-spacing:0.1em;color:var(--muted);margin-right:0.3rem}
 .service-dur{font-size:0.6rem;letter-spacing:0.1em;color:var(--muted)}
-.badge-featured{position:absolute;top:1rem;left:1rem;background:var(--gold);color:var(--bg);font-size:0.52rem;letter-spacing:0.2em;text-transform:uppercase;padding:0.3rem 0.8rem;font-weight:600}
+.badge-featured{display:inline-block;background:var(--gold);color:var(--bg);font-size:0.52rem;letter-spacing:0.2em;text-transform:uppercase;padding:0.3rem 0.8rem;font-weight:600;margin-bottom:0.8rem}
 
 /* CATEGORY PILLS */
 .cats{display:flex;gap:0.6rem;flex-wrap:wrap;margin-bottom:2.5rem}
