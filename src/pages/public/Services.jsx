@@ -43,9 +43,6 @@ export default function Services() {
           {filtered.map((s, i) => (
             <motion.div key={s.id} className="service-card" initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: Math.min(i * 0.05, 0.5) }}>
               {s.featured && <div className="badge-featured">Featured</div>}
-              <div className="service-img-wrap">
-                <img className="service-img" src={s.image || "https://images.unsplash.com/photo-1560066984-138dadb4c035?w=600&q=80"} alt={s.name} loading="lazy" />
-              </div>
               <div className="service-body">
                 <div className="service-cat">{categories?.find(c => c.slug === s.category)?.name || s.category}</div>
                 <div className="service-name">{s.name}</div>

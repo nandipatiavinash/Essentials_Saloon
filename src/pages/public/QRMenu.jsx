@@ -68,9 +68,6 @@ export default function QRMenu() {
         {filtered.length > 0 ? (
           filtered.map(s => (
             <div key={s.id} className="qr-service" onClick={() => setBookingSvc(s.name)}>
-              {s.image && (
-                <img className="qr-service-img" src={s.image} alt={s.name} loading="lazy" />
-              )}
               <div className="qr-service-body">
                 <div className="qr-service-cat">{data.categories?.find(c => c.slug === s.category)?.name || s.category}</div>
                 <div className="qr-service-name">{s.name}</div>
