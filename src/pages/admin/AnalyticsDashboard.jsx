@@ -6,7 +6,7 @@ import { buildAnalytics, logReport } from "../../lib/api";
 import { buildWhatsAppLink, formatEodReportMessage, getWhatsAppProvider } from "../../lib/whatsapp";
 
 export default function AnalyticsDashboard() {
-  const { invoices, customers, settings } = useAdmin();
+  const { invoices, customers, settings, inventory } = useAdmin();
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
   const [selectedDate, setSelectedDate] = useState(null);
   const analytics = useMemo(() => buildAnalytics(invoices || []), [invoices]);
@@ -34,7 +34,7 @@ export default function AnalyticsDashboard() {
   }, [invoices, selectedDate]);
 
   const sendEodReport = async () => {
-    const message = formatEodReportMessage(report, settings, todayInvoices);
+    const message = formatEodReportMessage(report, settings, todayInvoices, inventory);
     try {
       await logReport({
         report_type: "eod_whatsapp",

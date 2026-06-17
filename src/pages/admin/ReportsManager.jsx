@@ -71,7 +71,7 @@ export default function ReportsManager() {
       const dayRegister = (cashRegister || []).find(reg => reg.date === emailReportDate);
 
       // Generate the primary tabular report using the shared formatter
-      const primaryReportText = formatEodReportMessage(whatsappReport, settings, dayInvoices);
+      const primaryReportText = formatEodReportMessage(whatsappReport, settings, dayInvoices, inventory);
 
       let text = primaryReportText + `\n\n`;
 

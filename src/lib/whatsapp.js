@@ -110,16 +110,21 @@ export function formatInvoiceMessage(invoice, items = [], settings = {}) {
 }
 
 
-export function formatEodReportMessage(report, settings = {}, invoices = []) {
+export function formatEodReportMessage(report, settings = {}, invoices = [], inventory = []) {
   const salon = settings.name || "TONI & GUY ESSENSUALS GORANTLA";
   const date = new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
   
-  // Format daily invoice table
+  // 1. Format daily invoice table
   let tableRows = [];
   let totalNet = 0;
   let totalGST = 0;
   let totalTips = 0;
   let totalRevenue = 0;
+
+  // Track staff performance
+  const staffStats = {};
+  // Track payment modes
+  const paymentBreakdown = {};
 
   if (invoices && invoices.length > 0) {
     invoices.forEach(inv => {
@@ -132,30 +137,89 @@ export function formatEodReportMessage(report, settings = {}, invoices = []) {
       const tip = Number(inv.tip || 0);
       const total = Number(inv.total || 0);
       const payment = inv.payment_method || "—";
-      const stylist = inv.staff_name || "—";
 
       totalNet += netAmt;
       totalGST += gst;
       totalTips += tip;
       totalRevenue += total;
 
-      tableRows.push(`${clientName} | ${serviceNames} | Rs ${netAmt} | Rs ${gst} | Rs ${tip} | Rs ${total} | ${payment} | ${stylist}`);
+      // Group payments
+      paymentBreakdown[payment] = (paymentBreakdown[payment] || 0) + total;
+
+      // Compile items per staff member
+      (inv.invoice_items || []).forEach(item => {
+        const itemStaff = item.staff_name || inv.staff_name || "Unknown Stylist";
+        const itemType = item.item_type || "service";
+        const itemVal = Number(item.quantity || 1) * Number(item.price || 0);
+
+        if (!staffStats[itemStaff]) {
+          staffStats[itemStaff] = { clients: new Set(), netServices: 0, products: 0, tips: 0, total: 0 };
+        }
+        staffStats[itemStaff].clients.add(inv.id);
+        if (itemType === "product") {
+          staffStats[itemStaff].products += itemVal;
+        } else {
+          staffStats[itemStaff].netServices += itemVal;
+        }
+        staffStats[itemStaff].total += itemVal;
+      });
+
+      // Distribute tips and GST to main stylist
+      const mainStylist = inv.staff_name || "Unknown Stylist";
+      if (mainStylist) {
+        if (!staffStats[mainStylist]) {
+          staffStats[mainStylist] = { clients: new Set(), netServices: 0, products: 0, tips: 0, total: 0 };
+        }
+        staffStats[mainStylist].tips += tip;
+        staffStats[mainStylist].total += tip;
+      }
+
+      tableRows.push(`${clientName} | ${serviceNames} | Rs ${netAmt} | Rs ${gst} | Rs ${tip} | Rs ${total} | ${payment}`);
     });
   }
+
+  // Format Staff Performance rows
+  const staffRows = Object.entries(staffStats).map(([name, stats]) => {
+    return `${name} | Clients: ${stats.clients.size} | Services: Rs ${stats.netServices} | Products: Rs ${stats.products} | Tips: Rs ${stats.tips} | Total Contribution: Rs ${stats.total}`;
+  });
+
+  // Format Payment Breakdown rows
+  const paymentRows = Object.entries(paymentBreakdown).map(([method, amt]) => `${method}: Rs ${amt}`);
+
+  // Format Inventory Alerts
+  const lowStock = (inventory || []).filter(item => Number(item.stock_qty) <= Number(item.min_qty));
+  const lowStockStr = lowStock.length > 0 
+    ? `${lowStock.length} items low on stock (Reorder required)`
+    : "All products normal (No alerts)";
 
   const lines = [
     `==================================================`,
     `${salon.toUpperCase()} - EOD REPORT`,
     `Date: ${date}`,
     `==================================================`,
-    `Client Name | Services | Net | GST | Tip | Total | Payment | Stylist`,
+    `1. SALES INVOICES`,
+    `--------------------------------------------------`,
+    `Client Name | Services | Net | GST | Tip | Total | Payment`,
     `--------------------------------------------------`,
     tableRows.length > 0 ? tableRows.join("\n") : "No client services recorded today.",
     `--------------------------------------------------`,
     `Total Net Sales: Rs ${totalNet}`,
     `Total GST: Rs ${totalGST}`,
     `Total Tips: Rs ${totalTips}`,
-    `Total Gross Revenue: Rs ${totalRevenue}`
+    `Total Gross Revenue: Rs ${totalRevenue}`,
+    ``,
+    `2. PAYMENT SUMMARY`,
+    `--------------------------------------------------`,
+    paymentRows.length > 0 ? paymentRows.join("\n") : "No transactions today.",
+    ``,
+    `3. STAFF SUMMARY`,
+    `--------------------------------------------------`,
+    staffRows.length > 0 ? staffRows.join("\n") : "No staff activity logs today.",
+    ``,
+    `4. INVENTORY REPORT`,
+    `--------------------------------------------------`,
+    `Total Catalog Items: ${(inventory || []).length}`,
+    `Alerts: ${lowStockStr}`
   ];
 
   return lines.join("\n");
