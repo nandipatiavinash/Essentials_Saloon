@@ -86,8 +86,14 @@ export default function PublicLayout() {
   return (
     <DataCtx.Provider value={{ ...data, openBooking: () => setBookingOpen(true) }}>
       <nav className="nav">
-        <NavLink to="/" className="nav-logo">
-          Toni & Guy Essensuals<span> Gorantla</span>
+        <NavLink to="/" className="nav-logo" style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--gold)" }}>
+            <circle cx="6" cy="6" r="3"></circle>
+            <circle cx="6" cy="18" r="3"></circle>
+            <line x1="9.8" y1="8.2" x2="22" y2="20"></line>
+            <line x1="9.8" y1="15.8" x2="22" y2="4"></line>
+          </svg>
+          <span>Toni & Guy Essensuals <em style={{ fontStyle: "normal", color: "var(--white)" }}>Gorantla</em></span>
         </NavLink>
         <ul className="nav-links">
           {navLinks.map(l => (

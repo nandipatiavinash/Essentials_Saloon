@@ -68,7 +68,15 @@ export default function AdminLayout() {
       <div className="admin-shell">
         <aside className="admin-sidebar">
           <div className="sidebar-logo">
-            <div className="sidebar-logo-text" style={{ fontSize: "1rem" }}>Toni & Guy Essensuals Gorantla</div>
+            <div className="sidebar-logo-text" style={{ fontSize: "1rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--gold)" }}>
+                <circle cx="6" cy="6" r="3"></circle>
+                <circle cx="6" cy="18" r="3"></circle>
+                <line x1="9.8" y1="8.2" x2="22" y2="20"></line>
+                <line x1="9.8" y1="15.8" x2="22" y2="4"></line>
+              </svg>
+              <span>Essensuals <em style={{ fontStyle: "normal", color: "var(--gold)" }}>Gorantla</em></span>
+            </div>
             <div className="sidebar-logo-sub">Admin Panel</div>
           </div>
           <nav className="sidebar-nav">
