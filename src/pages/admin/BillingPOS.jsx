@@ -91,7 +91,7 @@ export default function BillingPOS() {
             items: updatedItems,
           };
         });
-        const memberInfo = customer.is_member ? ` (${customer.membership_tier} Member)` : "";
+        const memberInfo = customer.is_member ? " (Member)" : "";
         toast.success(`Client found: ${customer.name}${memberInfo}`);
       } else {
         toast.error("No client profile found for phone or ID.");
@@ -247,7 +247,7 @@ export default function BillingPOS() {
               alignItems: "center"
             }}>
               <div>
-                <strong>★ Active {bill.membership_tier} Member</strong>
+                <strong>★ Active Member</strong>
                 {bill.membership_id && <span style={{ marginLeft: "10px", opacity: 0.8 }}>ID: {bill.membership_id}</span>}
               </div>
               {bill.membership_end && (
@@ -370,7 +370,7 @@ export default function BillingPOS() {
                   borderRadius: "2px",
                   textTransform: "uppercase" 
                 }}>
-                  ★ {bill.membership_tier}
+                  ★ Member
                 </span>
               )}
             </div>

@@ -93,9 +93,9 @@ export default function SearchableStaffDropdown({
             width: "100%",
             padding: "0.55rem 2rem 0.55rem 0.75rem",
             fontSize: "0.8rem",
-            border: isInvalid ? "2px solid #b71c1c" : "1px solid var(--border2, #333)",
-            background: "rgba(255,255,255,0.04)",
-            color: "#fff",
+            border: isInvalid ? "2px solid var(--a-red, #b71c1c)" : "1px solid var(--a-border, #e8e8e4)",
+            background: "var(--a-bg, #f8f8f6)",
+            color: "var(--a-text, #1a1a1a)",
             outline: "none",
             borderRadius: "0",
             transition: "border-color 0.2s"
@@ -109,7 +109,7 @@ export default function SearchableStaffDropdown({
             cursor: "pointer", 
             fontSize: "0.5rem", 
             userSelect: "none",
-            color: "#c9b99a",
+            color: "var(--a-gold, #c9b99a)",
             pointerEvents: "auto"
           }}
         >
@@ -124,15 +124,15 @@ export default function SearchableStaffDropdown({
           left: 0,
           right: 0,
           zIndex: 1020,
-          background: "#1a1a1a",
-          border: "1px solid var(--gold, #c9b99a)",
+          background: "var(--a-surface, #fff)",
+          border: "1px solid var(--a-border, #e8e8e4)",
           borderTop: "none",
           maxHeight: "180px",
           overflowY: "auto",
           listStyle: "none",
           padding: 0,
           margin: 0,
-          boxShadow: "0 6px 16px rgba(0,0,0,0.6)"
+          boxShadow: "0 6px 16px rgba(0,0,0,0.08)"
         }}>
           {filtered.length > 0 ? (
             filtered.map((staff, idx) => {
@@ -147,21 +147,21 @@ export default function SearchableStaffDropdown({
                     padding: "0.5rem 0.75rem",
                     fontSize: "0.72rem",
                     cursor: "pointer",
-                    background: isSelected ? "rgba(201,185,154,0.3)" : isFocused ? "rgba(201,185,154,0.15)" : "transparent",
-                    color: isSelected ? "var(--gold, #c9b99a)" : "#fff",
-                    borderBottom: "1px solid rgba(255,255,255,0.05)",
+                    background: isSelected ? "rgba(201,185,154,0.15)" : isFocused ? "var(--a-bg, #f8f8f6)" : "transparent",
+                    color: isSelected ? "var(--a-gold, #c9b99a)" : "var(--a-text, #1a1a1a)",
+                    borderBottom: "1px solid var(--a-border, #e8e8e4)",
                     display: "flex",
                     justifyContent: "space-between",
                     alignItems: "center"
                   }}
                 >
                   <span style={{ fontWeight: isSelected ? "bold" : "normal" }}>{staff.name}</span>
-                  <span style={{ fontSize: "0.6rem", color: "#888" }}>{staff.role}</span>
+                  <span style={{ fontSize: "0.6rem", color: "var(--a-muted, #666)" }}>{staff.role}</span>
                 </li>
               );
             })
           ) : (
-            <li style={{ padding: "0.5rem 0.75rem", fontSize: "0.72rem", color: "#888", textAlign: "center" }}>
+            <li style={{ padding: "0.5rem 0.75rem", fontSize: "0.72rem", color: "var(--a-faint, #999)", textAlign: "center" }}>
               No staff found
             </li>
           )}

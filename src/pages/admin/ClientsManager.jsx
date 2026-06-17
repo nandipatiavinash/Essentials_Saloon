@@ -79,14 +79,14 @@ export default function ClientsManager() {
               <div className="profile-metrics">
                 <div><span>Total Spend</span><strong>Rs {Number(selected.total_spend || 0).toLocaleString("en-IN")}</strong></div>
                 <div><span>Visits</span><strong>{selected.visit_count || 0}</strong></div>
-                <div><span>Membership</span><strong>{selected.is_member ? `${selected.membership_tier}` : "None"}</strong></div>
+                <div><span>Membership</span><strong>{selected.is_member ? "Member" : "None"}</strong></div>
               </div>
 
               {selected.is_member && (
                 <div style={{ background: "rgba(201,185,154,0.08)", border: "1px solid rgba(201,185,154,0.3)", padding: "1rem", marginBottom: "1.5rem", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <div>
-                    <div style={{ fontSize: "0.55rem", textTransform: "uppercase", letterSpacing: "0.1em", color: "#888" }}>Membership Tier</div>
-                    <div style={{ fontSize: "1rem", fontWeight: "600", color: "#c9b99a" }}>★ {selected.membership_tier} Member</div>
+                    <div style={{ fontSize: "0.55rem", textTransform: "uppercase", letterSpacing: "0.1em", color: "#888" }}>Membership Status</div>
+                    <div style={{ fontSize: "1rem", fontWeight: "600", color: "#c9b99a" }}>★ Active Member</div>
                   </div>
                   <div style={{ textAlign: "right" }}>
                     <div style={{ fontSize: "0.55rem", textTransform: "uppercase", letterSpacing: "0.1em", color: "#888" }}>Valid Period</div>

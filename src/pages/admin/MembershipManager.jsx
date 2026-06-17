@@ -28,10 +28,18 @@ export default function MembershipManager() {
       return end.getTime() >= today.getTime();
     }).length;
 
-    const goldCount = list.filter(c => c.is_member && c.membership_tier === "Gold").length;
-    const platCount = list.filter(c => c.is_member && c.membership_tier === "Platinum").length;
-    const vvipCount = list.filter(c => c.is_member && c.membership_tier === "VVIP").length;
-    return { totalMembers: activeMembers, goldCount, platCount, vvipCount };
+    const expiredMembers = list.filter(c => {
+      if (!c.is_member || !c.membership_end) return false;
+      const end = new Date(c.membership_end);
+      end.setHours(0,0,0,0);
+      const today = new Date();
+      today.setHours(0,0,0,0);
+      return end.getTime() < today.getTime();
+    }).length;
+
+    const nonMembers = list.filter(c => !c.is_member).length;
+    const totalClients = list.length;
+    return { totalMembers: activeMembers, expiredMembers, nonMembers, totalClients };
   }, [customers]);
 
   const getDaysRemaining = (endDateStr) => {
@@ -56,7 +64,7 @@ export default function MembershipManager() {
       mobile: client.mobile,
       is_member: !!client.is_member,
       membership_id: client.membership_id || "",
-      membership_tier: client.membership_tier || "Gold",
+      membership_tier: client.membership_tier || "Member",
       membership_start: client.membership_start || today,
       membership_end: client.membership_end || oneYearLater,
       isNew: false,
@@ -75,7 +83,7 @@ export default function MembershipManager() {
       mobile: "",
       is_member: true,
       membership_id: "",
-      membership_tier: "Gold",
+      membership_tier: "Member",
       membership_start: today,
       membership_end: oneYearLater,
       isNew: true,
@@ -128,22 +136,22 @@ export default function MembershipManager() {
         <div className="stat-card">
           <div className="stat-label">Active Members</div>
           <div className="stat-value">{stats.totalMembers}</div>
-          <div className="stat-sub">Valid Memberships</div>
+          <div className="stat-sub">Valid memberships</div>
         </div>
         <div className="stat-card">
-          <div className="stat-label">Gold Members</div>
-          <div className="stat-value">{stats.goldCount}</div>
-          <div className="stat-sub">Regular tier</div>
+          <div className="stat-label">Expired Memberships</div>
+          <div className="stat-value">{stats.expiredMembers}</div>
+          <div className="stat-sub">Needs renewal</div>
         </div>
         <div className="stat-card">
-          <div className="stat-label">Platinum Members</div>
-          <div className="stat-value">{stats.platCount}</div>
-          <div className="stat-sub">Premium benefits</div>
+          <div className="stat-label">Non-Members</div>
+          <div className="stat-value">{stats.nonMembers}</div>
+          <div className="stat-sub">Regular salon pricing</div>
         </div>
         <div className="stat-card">
-          <div className="stat-label">VVIP Members</div>
-          <div className="stat-value">{stats.vvipCount}</div>
-          <div className="stat-sub">Elite access</div>
+          <div className="stat-label">Total Salon Clients</div>
+          <div className="stat-value">{stats.totalClients}</div>
+          <div className="stat-sub">Client database size</div>
         </div>
       </div>
 
@@ -189,7 +197,7 @@ export default function MembershipManager() {
                     {client.is_member ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: "0.15rem" }}>
                         <span className={daysLeft >= 0 ? "badge badge-gold" : "badge badge-inactive"} style={{ display: "inline-flex", alignItems: "center", gap: "3px", width: "fit-content" }}>
-                          <Award size={10} /> {client.membership_tier}
+                          <Award size={10} /> Member
                         </span>
                         {client.membership_id && (
                           <div style={{ fontSize: "0.62rem", color: "var(--a-muted)" }}>ID: {client.membership_id}</div>
@@ -280,15 +288,6 @@ export default function MembershipManager() {
 
                 {modalObj.is_member && (
                   <>
-                    <div className="form-group">
-                      <label className="form-label">Membership Tier</label>
-                      <select className="form-input" value={modalObj.membership_tier} onChange={(e) => setModalObj({ ...modalObj, membership_tier: e.target.value })}>
-                        <option value="Gold">Gold Tier (Recommended)</option>
-                        <option value="Platinum">Platinum Tier</option>
-                        <option value="VVIP">VVIP Tier</option>
-                      </select>
-                    </div>
-
                     <div className="form-row">
                       <div className="form-group">
                         <label className="form-label">Start Date</label>
