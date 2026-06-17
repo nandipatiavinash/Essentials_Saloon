@@ -1,5 +1,25 @@
 import { Outlet, NavLink, useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
+import { MapPin } from "lucide-react";
+
+const InstagramIcon = ({ size = 16, ...props }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    <rect x="2" y="2" width="20" height="20" rx="5" ry="5" />
+    <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
+    <line x1="17.5" y1="6.5" x2="17.51" y2="6.5" />
+  </svg>
+);
 import { fetchPublicData } from "../lib/api";
 import { createBooking } from "../lib/api";
 import toast from "react-hot-toast";
@@ -104,7 +124,7 @@ export default function PublicLayout() {
       <footer className="footer">
         <div className="footer-top">
           <div>
-            <div className="footer-brand" style={{ textTransform: "none", fontSize: "1.4rem" }}>Toni & Guy Essensuals<span style={{ color: "var(--gold)" }}> Gorantla</span></div>
+            <div className="footer-brand">Toni & Guy Essensuals<span style={{ color: "var(--gold)" }}> Gorantla</span></div>
             <div className="footer-tagline">A premium luxury salon experience in Guntur. A franchisee of Toni&Guy Essensuals UK.</div>
           </div>
           <div>
@@ -124,7 +144,12 @@ export default function PublicLayout() {
             {data.settings?.phone && <div className="footer-link">{data.settings.phone}</div>}
             {data.settings?.email && <div className="footer-link">{data.settings.email}</div>}
             <div className="social-links" style={{ marginTop: "1rem" }}>
-              {["IG", "FB", "YT"].map(s => <div key={s} className="social-btn">{s}</div>)}
+              <a href="https://www.instagram.com/toniandguy_essensual_gorantla/" target="_blank" rel="noopener noreferrer" className="social-btn" title="Instagram">
+                <InstagramIcon size={16} />
+              </a>
+              <a href="https://share.google/APJl5CWwP49v7jOCc" target="_blank" rel="noopener noreferrer" className="social-btn" title="Google Maps">
+                <MapPin size={16} />
+              </a>
             </div>
           </div>
         </div>

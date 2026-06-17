@@ -123,7 +123,7 @@ body{font-family:var(--sans);background:var(--bg);color:var(--white);font-size:1
 /* FOOTER */
 .footer{background:#080808;padding:4rem 8vw 2rem;border-top:1px solid var(--border)}
 .footer-top{display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:3rem;margin-bottom:3rem}
-.footer-brand{font-family:var(--serif);font-size:1.4rem;font-weight:300;letter-spacing:0.12em;text-transform:uppercase;color:var(--white);margin-bottom:1rem}
+.footer-brand{font-family:var(--serif);font-size:1.45rem;font-weight:300;letter-spacing:0.08em;text-transform:none;color:var(--white);margin-bottom:1rem}
 .footer-tagline{font-size:0.72rem;color:rgba(245,245,240,0.3);line-height:1.9;max-width:260px}
 .footer-heading{font-size:0.58rem;letter-spacing:0.25em;text-transform:uppercase;color:var(--gold);margin-bottom:1.2rem}
 .footer-link{display:block;font-size:0.72rem;color:rgba(245,245,240,0.4);margin-bottom:0.6rem;cursor:pointer;transition:color 0.2s;background:none;border:none;font-family:var(--sans);text-align:left;padding:0;text-decoration:none}
