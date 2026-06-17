@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useAdmin } from "../../layouts/AdminLayout";
-import { createService, updateService, deleteService, patchService, uploadImage } from "../../lib/api";
+import { createService, updateService, deleteService, patchService } from "../../lib/api";
 import toast from "react-hot-toast";
 
 export default function ServicesManager() {
@@ -8,15 +8,11 @@ export default function ServicesManager() {
   const [modalObj, setModalObj] = useState(null); // null = closed, {} = new, {...} = edit
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
-  const [uploadingImg, setUploadingImg] = useState(false);
-  const [showUrlInput, setShowUrlInput] = useState(false);
 
   const filtered = services?.filter(s => s.name.toLowerCase().includes(search.toLowerCase())) || [];
 
   const handleOpenModal = (obj) => {
     setModalObj(obj);
-    setUploadingImg(false);
-    setShowUrlInput(false);
   };
 
   const handleSave = async (e) => {
@@ -59,20 +55,7 @@ export default function ServicesManager() {
     }
   };
 
-  const handleImageUpload = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setUploadingImg(true);
-    try {
-      const url = await uploadImage(file);
-      setModalObj(prev => ({ ...prev, image: url }));
-      toast.success("Image uploaded successfully");
-    } catch (err) {
-      toast.error("Upload failed: " + err.message);
-    } finally {
-      setUploadingImg(false);
-    }
-  };
+
 
   return (
     <>
@@ -169,42 +152,7 @@ export default function ServicesManager() {
                   <textarea className="form-input" rows="3" value={modalObj.description || ""} onChange={e => setModalObj({ ...modalObj, description: e.target.value })}></textarea>
                 </div>
                 
-                <div className="form-group">
-                  <label className="form-label">Service Image</label>
-                  <div style={{ display: "flex", gap: "1rem", alignItems: "center" }}>
-                    {modalObj.image ? (
-                      <div style={{ position: "relative", width: "80px", height: "80px", border: "1px solid var(--a-border)", background: "#111" }}>
-                        <img src={modalObj.image} alt="Preview" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                        <button type="button" onClick={() => setModalObj({ ...modalObj, image: "" })} style={{ position: "absolute", top: "-5px", right: "-5px", background: "#f44336", color: "#fff", border: "none", borderRadius: "50%", width: "18px", height: "18px", fontSize: "10px", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }} title="Remove image">✕</button>
-                      </div>
-                    ) : (
-                      <div style={{ width: "80px", height: "80px", border: "1px dashed var(--a-border)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--a-muted)", fontSize: "0.6rem", textAlign: "center" }}>
-                        No Image
-                      </div>
-                    )}
-                    <div style={{ flex: 1 }}>
-                      {uploadingImg ? (
-                        <span style={{ fontSize: "0.75rem", color: "var(--gold)" }}>Uploading image...</span>
-                      ) : (
-                        <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}>
-                          <label className="tbl-btn" style={{ cursor: "pointer", display: "inline-block", textAlign: "center", width: "fit-content" }}>
-                            Upload File
-                            <input type="file" accept="image/*" onChange={handleImageUpload} style={{ display: "none" }} />
-                          </label>
-                          <span style={{ fontSize: "0.6rem", color: "var(--a-muted)" }}>Supported: JPG, PNG, WEBP. Max 5MB.</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  <div style={{ marginTop: "0.5rem" }}>
-                    <span style={{ fontSize: "0.65rem", color: "var(--a-muted)", cursor: "pointer", textDecoration: "underline" }} onClick={() => setShowUrlInput(!showUrlInput)}>
-                      {showUrlInput ? "Hide URL Input" : "Edit Image URL Directly"}
-                    </span>
-                    {showUrlInput && (
-                      <input className="form-input" style={{ marginTop: "0.4rem" }} placeholder="https://example.com/image.jpg" value={modalObj.image || ""} onChange={e => setModalObj({ ...modalObj, image: e.target.value })} />
-                    )}
-                  </div>
-                </div>
+
 
                 <div style={{ display: "flex", gap: "1.5rem", marginTop: "1rem" }}>
                   <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.8rem", cursor: "pointer" }}>
