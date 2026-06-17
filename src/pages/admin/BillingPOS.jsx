@@ -11,7 +11,7 @@ const emptyBill = () => ({
   mobile: "",
   customer_id: null,
   is_member: false,
-  membership_tier: "Regular",
+  membership_tier: "Member",
   membership_id: "",
   membership_end: "",
   items: [],
@@ -27,7 +27,7 @@ const emptyBill = () => ({
 });
 
 export default function BillingPOS() {
-  const { services, settings, staff, reload } = useAdmin();
+  const { services, settings, staff, inventory, reload } = useAdmin();
   const [bill, setBill] = useState(emptyBill);
   const [saving, setSaving] = useState(false);
   const [invoice, setInvoice] = useState(null);
@@ -36,33 +36,27 @@ export default function BillingPOS() {
   const [search, setSearch] = useState("");
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [attemptedSubmit, setAttemptedSubmit] = useState(false);
+  const [addTab, setAddTab] = useState("services");
 
   const activeServices = useMemo(() => (services || []).filter((svc) => svc.active), [services]);
+  const activeInventory = useMemo(() => (inventory || []).filter(item => Number(item.stock_qty) > 0), [inventory]);
   const totals = useMemo(() => calculateInvoiceTotals(bill), [bill]);
 
-  useEffect(() => {
-    loadHistory();
-  }, []);
+  useEffect(() => { loadHistory(); }, []);
 
   const loadHistory = async (term = "") => {
     setLoadingHistory(true);
-    try {
-      setHistory(await searchInvoices(term));
-    } catch (err) {
-      toast.error(err.message);
-    } finally {
-      setLoadingHistory(false);
-    }
+    try { setHistory(await searchInvoices(term)); }
+    catch (err) { toast.error(err.message); }
+    finally { setLoadingHistory(false); }
   };
 
   const getDaysRemaining = (endDateStr) => {
     if (!endDateStr) return 0;
     const end = new Date(endDateStr);
     const today = new Date();
-    end.setHours(0,0,0,0);
-    today.setHours(0,0,0,0);
-    const diff = end.getTime() - today.getTime();
-    return Math.ceil(diff / (1000 * 60 * 60 * 24));
+    end.setHours(0,0,0,0); today.setHours(0,0,0,0);
+    return Math.ceil((end.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
   };
 
   const lookupCustomer = async () => {
@@ -72,6 +66,7 @@ export default function BillingPOS() {
       if (customer) {
         setBill((current) => {
           const updatedItems = current.items.map(item => {
+            if (item.item_type === "product") return item;
             const svc = activeServices.find(s => String(s.id) === String(item.service_id));
             if (svc && customer.is_member && svc.member_price != null && svc.member_price > 0) {
               return { ...item, price: svc.member_price };
@@ -85,20 +80,17 @@ export default function BillingPOS() {
             mobile: customer.mobile,
             customer_notes: customer.notes || "",
             is_member: !!customer.is_member,
-            membership_tier: customer.membership_tier || "Regular",
+            membership_tier: customer.membership_tier || "Member",
             membership_id: customer.membership_id || "",
             membership_end: customer.membership_end || "",
             items: updatedItems,
           };
         });
-        const memberInfo = customer.is_member ? " (Member)" : "";
-        toast.success(`Client found: ${customer.name}${memberInfo}`);
+        toast.success(`Client found: ${customer.name}${customer.is_member ? " (Member)" : ""}`);
       } else {
         toast.error("No client profile found for phone or ID.");
       }
-    } catch (err) {
-      toast.error(err.message);
-    }
+    } catch (err) { toast.error(err.message); }
   };
 
   const addService = (serviceId) => {
@@ -111,18 +103,33 @@ export default function BillingPOS() {
       }
       return {
         ...current,
-        items: [
-          ...current.items,
-          {
-            service_id: service.id,
-            service_name: service.name,
-            quantity: 1,
-            price,
-            staff_name: current.staff_name || "",
-          },
-        ],
+        items: [...current.items, {
+          item_type: "service",
+          service_id: service.id,
+          service_name: service.name,
+          quantity: 1,
+          price,
+          staff_name: current.staff_name || "",
+        }],
       };
     });
+  };
+
+  const addProduct = (productId) => {
+    const product = activeInventory.find(p => String(p.id) === String(productId));
+    if (!product) return;
+    setBill((current) => ({
+      ...current,
+      items: [...current.items, {
+        item_type: "product",
+        inventory_id: product.id,
+        service_id: null,
+        service_name: product.name,
+        quantity: 1,
+        price: Number(product.unit_price || 0),
+        staff_name: current.staff_name || "",
+      }],
+    }));
   };
 
   const updateItem = (index, patch) => {
@@ -139,17 +146,9 @@ export default function BillingPOS() {
   const submitBill = async (e) => {
     e.preventDefault();
     setAttemptedSubmit(true);
-
-    if (!bill.staff_name) {
-      toast.error("Please select a main staff member");
-      return;
-    }
+    if (!bill.staff_name) { toast.error("Please select a main staff member"); return; }
     const missingItemStaff = bill.items.some(item => !item.staff_name);
-    if (missingItemStaff) {
-      toast.error("Please select a staff member for all services");
-      return;
-    }
-
+    if (missingItemStaff) { toast.error("Please select a staff member for all items"); return; }
     setSaving(true);
     try {
       const saved = await saveInvoice({ ...bill, billing_at: new Date(bill.billing_at).toISOString() });
@@ -161,9 +160,7 @@ export default function BillingPOS() {
       await Promise.all([loadHistory(search), reload()]);
     } catch (err) {
       toast.error(err.message);
-    } finally {
-      setSaving(false);
-    }
+    } finally { setSaving(false); }
   };
 
   const editInvoice = async (id) => {
@@ -185,28 +182,31 @@ export default function BillingPOS() {
         notes: details.invoice.notes || "",
         staff_name: details.invoice.staff_name || "",
         is_member: details.invoice.customer?.is_member || false,
-        membership_tier: details.invoice.customer?.membership_tier || "Regular",
+        membership_tier: details.invoice.customer?.membership_tier || "Member",
         membership_id: details.invoice.customer?.membership_id || "",
         membership_end: details.invoice.customer?.membership_end || "",
         billing_at: new Date(details.invoice.billing_at).toISOString().slice(0, 16),
       });
       setAttemptedSubmit(false);
       window.scrollTo({ top: 0, behavior: "smooth" });
-    } catch (err) {
-      toast.error(err.message);
-    }
+    } catch (err) { toast.error(err.message); }
   };
 
-  const printInvoice = () => window.print();
+  const printInvoice = () => setTimeout(() => window.print(), 100);
 
   const shareInvoice = () => {
-    if (!invoice) return;
-    const invData = {
-      ...invoice,
-      is_member: bill.is_member,
-      membership_tier: bill.membership_tier
-    };
-    window.open(buildWhatsAppLink(invoice.mobile, formatInvoiceMessage(invData, invoiceItems, settings)), "_blank", "noopener,noreferrer");
+    if (!invoice) {
+      toast.error("Please save the bill first before sharing on WhatsApp.");
+      return;
+    }
+    const invData = { ...invoice, is_member: bill.is_member, membership_tier: bill.membership_tier };
+    const url = buildWhatsAppLink(invoice.mobile, formatInvoiceMessage(invData, invoiceItems, settings));
+    const win = window.open(url, "_blank", "noopener,noreferrer");
+    if (!win) {
+      navigator.clipboard?.writeText(url).then(() => {
+        toast.success("WhatsApp popup blocked — link copied to clipboard! Paste it in your browser.");
+      }).catch(() => toast.error("Please allow popups for WhatsApp to open."));
+    }
   };
 
   return (
@@ -215,7 +215,7 @@ export default function BillingPOS() {
         <div className="pos-header">
           <div>
             <div className="table-title">{bill.id ? "Edit Invoice" : "New Billing"}</div>
-            <div className="pos-sub">Fast multi-service salon checkout</div>
+            <div className="pos-sub">Fast multi-service/product checkout</div>
           </div>
           <button className="btn-add" disabled={saving}>{saving ? "Saving..." : "Save Bill"}</button>
         </div>
@@ -235,41 +235,20 @@ export default function BillingPOS() {
             </div>
           </div>
           {bill.is_member && (
-            <div style={{ 
-              marginTop: "0.75rem", 
-              padding: "0.75rem 1rem", 
-              background: "rgba(201,185,154,0.08)", 
-              border: "1px solid rgba(201,185,154,0.3)", 
-              color: "#c9b99a",
-              fontSize: "0.72rem",
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center"
-            }}>
+            <div style={{ marginTop: "0.75rem", padding: "0.75rem 1rem", background: "rgba(201,185,154,0.08)", border: "1px solid rgba(201,185,154,0.3)", color: "#c9b99a", fontSize: "0.72rem", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <div>
                 <strong>★ Active Member</strong>
                 {bill.membership_id && <span style={{ marginLeft: "10px", opacity: 0.8 }}>ID: {bill.membership_id}</span>}
               </div>
               {bill.membership_end && (
-                <div>
-                  Expires: {new Date(bill.membership_end).toLocaleDateString("en-IN")} 
-                  <span style={{ marginLeft: "8px", fontWeight: "bold" }}>
-                    ({getDaysRemaining(bill.membership_end)} days left)
-                  </span>
-                </div>
+                <div>Expires: {new Date(bill.membership_end).toLocaleDateString("en-IN")} <span style={{ marginLeft: "8px", fontWeight: "bold" }}>({getDaysRemaining(bill.membership_end)} days left)</span></div>
               )}
             </div>
           )}
           <div className="form-row" style={{ marginTop: "1rem" }}>
             <div className="form-group" style={{ zIndex: 10 }}>
               <label className="form-label">Staff Name</label>
-              <SearchableStaffDropdown
-                staffList={staff}
-                value={bill.staff_name}
-                onChange={(val) => setBill({ ...bill, staff_name: val })}
-                placeholder="Select Staff"
-                isInvalid={attemptedSubmit && !bill.staff_name}
-              />
+              <SearchableStaffDropdown staffList={staff} value={bill.staff_name} onChange={(val) => setBill({ ...bill, staff_name: val })} placeholder="Select Staff" isInvalid={attemptedSubmit && !bill.staff_name} />
             </div>
             <div className="form-group">
               <label className="form-label">Billing Date/Time</label>
@@ -279,36 +258,58 @@ export default function BillingPOS() {
         </div>
 
         <div className="pos-section">
-          <div className="service-picker">
-            <select className="form-input" defaultValue="" onChange={(e) => { addService(e.target.value); e.target.value = ""; }}>
-              <option value="" disabled>Select service to add</option>
-              {activeServices.map((svc) => <option key={svc.id} value={svc.id}>{svc.name} - Rs {svc.price_from}</option>)}
-            </select>
-            <button type="button" className="tbl-btn" onClick={() => addService(activeServices[0]?.id)}><Plus size={14} /> Quick add</button>
+          <div style={{ display: "flex", gap: "0.5rem", marginBottom: "0.75rem" }}>
+            <button type="button" className={`tbl-btn${addTab === "services" ? " active" : ""}`} onClick={() => setAddTab("services")}>✂️ Services</button>
+            <button type="button" className={`tbl-btn${addTab === "products" ? " active" : ""}`} onClick={() => setAddTab("products")}>📦 Products ({activeInventory.length} in stock)</button>
           </div>
+
+          {addTab === "services" && (
+            <div className="service-picker">
+              <select className="form-input" defaultValue="" onChange={(e) => { addService(e.target.value); e.target.value = ""; }}>
+                <option value="" disabled>Select service to add</option>
+                {activeServices.map((svc) => (
+                  <option key={svc.id} value={svc.id}>
+                    {svc.name} — Rs {svc.price_from}{bill.is_member && svc.member_price ? ` (Member: Rs ${svc.member_price})` : ""}
+                  </option>
+                ))}
+              </select>
+              <button type="button" className="tbl-btn" onClick={() => addService(activeServices[0]?.id)}><Plus size={14} /> Quick add</button>
+            </div>
+          )}
+
+          {addTab === "products" && (
+            <div className="service-picker">
+              <select className="form-input" defaultValue="" onChange={(e) => { addProduct(e.target.value); e.target.value = ""; }}>
+                <option value="" disabled>Select product to sell</option>
+                {activeInventory.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name} — Rs {p.unit_price} (Stock: {p.stock_qty})</option>
+                ))}
+              </select>
+              {activeInventory.length === 0 && <span style={{ fontSize: "0.72rem", color: "#b71c1c", alignSelf: "center" }}>No products in stock</span>}
+            </div>
+          )}
 
           <div className="pos-items">
             {bill.items.map((item, index) => (
-              <div className="pos-item" key={`${item.service_id}-${index}`} style={{ overflow: "visible" }}>
+              <div className="pos-item" key={`${item.service_id || item.inventory_id}-${index}`} style={{ overflow: "visible" }}>
                 <div>
-                  <div className="pos-item-name">{item.service_name}</div>
+                  <div className="pos-item-name">
+                    {item.item_type === "product" && (
+                      <span style={{ fontSize: "0.55rem", background: "rgba(201,185,154,0.2)", color: "#c9b99a", padding: "1px 5px", marginRight: "5px", fontWeight: 700, letterSpacing: "0.05em" }}>PRODUCT</span>
+                    )}
+                    {item.service_name}
+                  </div>
                   <div style={{ marginTop: "0.25rem", width: "160px" }}>
-                    <SearchableStaffDropdown
-                      staffList={staff}
-                      value={item.staff_name}
-                      onChange={(val) => updateItem(index, { staff_name: val })}
-                      placeholder="Select Staff"
-                      isInvalid={attemptedSubmit && !item.staff_name}
-                    />
+                    <SearchableStaffDropdown staffList={staff} value={item.staff_name} onChange={(val) => updateItem(index, { staff_name: val })} placeholder="Select Staff" isInvalid={attemptedSubmit && !item.staff_name} />
                   </div>
                 </div>
                 <input className="mini-input qty" type="number" min="1" value={item.quantity} onChange={(e) => updateItem(index, { quantity: e.target.value })} />
                 <input className="mini-input price" type="number" min="0" value={item.price} onChange={(e) => updateItem(index, { price: e.target.value })} />
                 <div className="pos-line-total">Rs {(Number(item.quantity || 1) * Number(item.price || 0)).toLocaleString("en-IN")}</div>
-                <button type="button" className="icon-btn danger" onClick={() => removeItem(index)} aria-label="Remove service"><Trash2 size={16} /></button>
+                <button type="button" className="icon-btn danger" onClick={() => removeItem(index)} aria-label="Remove item"><Trash2 size={16} /></button>
               </div>
             ))}
-            {!bill.items.length && <div className="admin-empty compact">Add services from your database to begin a bill.</div>}
+            {!bill.items.length && <div className="admin-empty compact">Add services or products to begin a bill.</div>}
           </div>
         </div>
 
@@ -334,10 +335,7 @@ export default function BillingPOS() {
             <div className="form-group">
               <label className="form-label">Payment Method</label>
               <select className="form-input" value={bill.payment_method} onChange={(e) => setBill({ ...bill, payment_method: e.target.value })}>
-                <option>Cash</option>
-                <option>UPI</option>
-                <option>Card</option>
-                <option>Bank Transfer</option>
+                <option>Cash</option><option>UPI</option><option>Card</option><option>Bank Transfer</option>
               </select>
             </div>
             <div className="form-group">
@@ -360,18 +358,7 @@ export default function BillingPOS() {
             <div>
               {bill.client_name || invoice?.client_name || "Client"}
               {bill.is_member && (
-                <span style={{ 
-                  marginLeft: "8px", 
-                  background: "#c9b99a", 
-                  color: "#0d0d0d", 
-                  fontSize: "0.55rem", 
-                  padding: "2px 6px", 
-                  fontWeight: "bold",
-                  borderRadius: "2px",
-                  textTransform: "uppercase" 
-                }}>
-                  ★ Member
-                </span>
+                <span style={{ marginLeft: "8px", background: "#c9b99a", color: "#0d0d0d", fontSize: "0.55rem", padding: "2px 6px", fontWeight: "bold", borderRadius: "2px", textTransform: "uppercase" }}>★ Member</span>
               )}
             </div>
             <span>{bill.mobile || invoice?.mobile || ""}</span>
@@ -379,26 +366,27 @@ export default function BillingPOS() {
           <div className="invoice-lines">
             {bill.items.map((item, index) => (
               <div className="invoice-line" key={index}>
-                <span>{item.service_name} x{item.quantity}</span>
+                <span>
+                  {item.item_type === "product" && <span style={{ fontSize: "0.55rem", opacity: 0.7, marginRight: 3 }}>[PKT]</span>}
+                  {item.service_name} x{item.quantity}
+                </span>
                 <strong>Rs {(Number(item.quantity || 1) * Number(item.price || 0)).toLocaleString("en-IN")}</strong>
               </div>
             ))}
           </div>
           <div className="invoice-totals">
-            <div><span>Service Total</span><strong>Rs {totals.subtotal.toLocaleString("en-IN")}</strong></div>
-            {totals.discount > 0 && (
-              <div><span>Discount</span><strong>Rs {totals.discount.toLocaleString("en-IN")}</strong></div>
-            )}
+            <div><span>Total</span><strong>Rs {totals.subtotal.toLocaleString("en-IN")}</strong></div>
+            {totals.discount > 0 && <div><span>Discount</span><strong>-Rs {totals.discount.toLocaleString("en-IN")}</strong></div>}
             <div><span>Net Amount (Before GST)</span><strong>Rs {totals.taxable.toLocaleString("en-IN")}</strong></div>
             <div><span>GST ({bill.tax_enabled ? bill.tax_rate : 0}%)</span><strong>Rs {totals.tax.toLocaleString("en-IN")}</strong></div>
-            {totals.tip > 0 && (
-              <div><span>Tip</span><strong>Rs {totals.tip.toLocaleString("en-IN")}</strong></div>
-            )}
+            {totals.tip > 0 && <div><span>Tip</span><strong>Rs {totals.tip.toLocaleString("en-IN")}</strong></div>}
             <div className="grand"><span>Grand Total</span><strong>Rs {totals.total.toLocaleString("en-IN")}</strong></div>
           </div>
           <div className="invoice-actions no-print">
             <button type="button" className="tbl-btn" onClick={printInvoice}><Printer size={14} /> Print</button>
-            <button type="button" className="tbl-btn" disabled={!invoice} onClick={shareInvoice}><Send size={14} /> WhatsApp</button>
+            <button type="button" className="tbl-btn" onClick={shareInvoice} title={!invoice ? "Save the bill first" : "Share via WhatsApp"}>
+              <Send size={14} /> {invoice ? "WhatsApp" : "WhatsApp (Save first)"}
+            </button>
           </div>
         </div>
 
@@ -413,7 +401,7 @@ export default function BillingPOS() {
           <div className="history-list">
             {history.map((row) => (
               <button type="button" className="history-row" key={row.id} onClick={() => editInvoice(row.id)}>
-                <span><strong>{row.invoice_number}</strong>{row.client_name}</span>
+                <span><strong>{row.invoice_number}</strong> {row.client_name}</span>
                 <span>Rs {row.total.toLocaleString("en-IN")} <Eye size={14} /></span>
               </button>
             ))}

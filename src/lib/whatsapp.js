@@ -19,7 +19,12 @@ export function getWhatsAppProvider(settings = {}) {
 export function buildWhatsAppLink(phone, message) {
   const digits = String(phone || "").replace(/\D/g, "");
   const target = digits.length === 10 ? `91${digits}` : digits;
-  return `https://wa.me/${target}?text=${encodeURIComponent(message)}`;
+  // Use encodeURIComponent but preserve WhatsApp-friendly formatting
+  const encodedMsg = encodeURIComponent(message)
+    .replace(/%0A/g, "%0A") // keep newlines
+    .replace(/%2A/g, "*")   // keep bold asterisks
+    .replace(/%5F/g, "_");  // keep italics underscores
+  return `https://wa.me/${target}?text=${encodedMsg}`;
 }
 
 export function formatInvoiceMessage(invoice, items = [], settings = {}) {

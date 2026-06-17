@@ -239,7 +239,7 @@ export async function saveInvoice(payload) {
   if (customerError) throw customerError;
 
   const invoiceRow = {
-    invoice_number: payload.invoice_number || makeInvoiceNumber(),
+    invoice_number: payload.invoice_number || await makeInvoiceNumber(),
     customer_id: customer.id,
     client_name: payload.client_name.trim(),
     mobile,
@@ -272,8 +272,10 @@ export async function saveInvoice(payload) {
 
   const itemRows = payload.items.map((item) => ({
     invoice_id: invoice.id,
-    service_id: item.service_id || null,
+    service_id: item.item_type === "product" ? null : (item.service_id || null),
+    inventory_id: item.item_type === "product" ? (item.inventory_id || null) : null,
     service_name: item.service_name,
+    item_type: item.item_type || "service",
     quantity: Number(item.quantity || 1),
     price: Number(item.price || 0),
     total: Number(item.quantity || 1) * Number(item.price || 0),
@@ -281,6 +283,16 @@ export async function saveInvoice(payload) {
   }));
   const { error: itemsError } = await t("invoice_items").insert(itemRows);
   if (itemsError) throw itemsError;
+
+  // Decrement stock for any product items
+  const productItems = payload.items.filter(item => item.item_type === "product" && item.inventory_id);
+  for (const pItem of productItems) {
+    const { data: invRow } = await t("inventory").select("stock_qty").eq("id", pItem.inventory_id).single();
+    if (invRow) {
+      const newQty = Math.max(0, Number(invRow.stock_qty) - Number(pItem.quantity || 1));
+      await t("inventory").update({ stock_qty: newQty, updated_at: new Date().toISOString() }).eq("id", pItem.inventory_id);
+    }
+  }
 
   const { error: txnError } = await t("transactions").upsert({
     invoice_id: invoice.id,
@@ -535,9 +547,19 @@ function normalizePhone(phone = "") {
   return digits.length > 10 ? digits.slice(-10) : digits;
 }
 
-function makeInvoiceNumber() {
-  const stamp = new Date().toISOString().slice(0, 10).replaceAll("-", "");
-  return `INV-${stamp}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
+async function makeInvoiceNumber() {
+  const today = new Date().toISOString().slice(0, 10).replaceAll("-", ""); // YYYYMMDD
+  const prefix = `INV-${today}-`;
+  const { data, error } = await supabase
+    .from("invoices")
+    .select("invoice_number")
+    .like("invoice_number", `${prefix}%`)
+    .order("invoice_number", { ascending: false })
+    .limit(1);
+  if (error || !data || data.length === 0) return `${prefix}001`;
+  const last = data[0].invoice_number;
+  const seq = parseInt(last.replace(prefix, ""), 10) || 0;
+  return `${prefix}${String(seq + 1).padStart(3, "0")}`;
 }
 
 function roundMoney(value) {

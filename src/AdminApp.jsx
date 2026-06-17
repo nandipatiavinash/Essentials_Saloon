@@ -20,6 +20,7 @@ import MembershipManager from "./pages/admin/MembershipManager";
 import AttendanceManager from "./pages/admin/AttendanceManager";
 import InventoryManager from "./pages/admin/InventoryManager";
 import CashRegisterManager from "./pages/admin/CashRegisterManager";
+import StaffProfile from "./pages/admin/StaffProfile";
 
 function RequireAuth({ children }) {
   const [status, setStatus] = useState("loading"); // loading | authed | unauthed
@@ -68,6 +69,7 @@ export default function AdminApp() {
         <Route path="reports" element={<ReportsManager />} />
         <Route path="qr" element={<QRManager />} />
         <Route path="settings" element={<Settings />} />
+        <Route path="staff/:id" element={<StaffProfile />} />
       </Route>
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>

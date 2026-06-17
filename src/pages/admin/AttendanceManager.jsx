@@ -2,10 +2,12 @@ import { useMemo, useState } from "react";
 import { Search, UserCheck, Calendar, Clock, Plus, Trash2, Award, ClipboardList, TrendingUp } from "lucide-react";
 import { useAdmin } from "../../layouts/AdminLayout";
 import { createStaff, updateStaff, deleteStaff, saveAttendance, format12HourTime } from "../../lib/api";
+import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 
 export default function AttendanceManager() {
   const { staff, attendance, invoices, reload } = useAdmin();
+  const navigate = useNavigate();
   const [subView, setSubView] = useState("attendance"); // attendance | roster | performance
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [staffModal, setStaffModal] = useState(null); // null | {} = add | {id...} = edit
@@ -320,7 +322,13 @@ export default function AttendanceManager() {
               {staff.map(s => (
                 <tr key={s.id}>
                   <td>
-                    <div style={{ fontWeight: 600 }}>{s.name}</div>
+                    <button
+                      className="tbl-btn"
+                      style={{ fontWeight: 700, background: "none", border: "none", cursor: "pointer", color: "var(--a-text)", padding: 0, textAlign: "left" }}
+                      onClick={() => navigate(`/staff/${s.id}`)}
+                    >
+                      {s.name}
+                    </button>
                   </td>
                   <td>{s.phone || "—"}</td>
                   <td>
@@ -387,7 +395,13 @@ export default function AttendanceManager() {
               {performanceData.map(p => (
                 <tr key={p.id}>
                   <td>
-                    <div style={{ fontWeight: 600 }}>{p.name}</div>
+                    <button
+                      className="tbl-btn"
+                      style={{ fontWeight: 700, background: "none", border: "none", cursor: "pointer", color: "var(--a-text)", padding: 0, textAlign: "left" }}
+                      onClick={() => navigate(`/staff/${p.id}`)}
+                    >
+                      {p.name}
+                    </button>
                   </td>
                   <td>
                     <span className="badge badge-gold" style={{ letterSpacing: "0.06em", padding: "2px 6px" }}>{p.role}</span>
