@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Eye, Plus, Printer, Search, Send, Trash2 } from "lucide-react";
 import toast from "react-hot-toast";
 import { useAdmin } from "../../layouts/AdminLayout";
+import { useSearchParams } from "react-router-dom";
 import { calculateInvoiceTotals, fetchInvoiceDetails, findCustomerByPhone, saveInvoice, searchInvoices } from "../../lib/api";
 import { buildWhatsAppLink, formatInvoiceMessage } from "../../lib/whatsapp";
 import SearchableStaffDropdown from "../../components/SearchableStaffDropdown";
@@ -44,11 +45,14 @@ export default function BillingPOS() {
   const activeInventory = useMemo(() => (inventory || []).filter(item => Number(item.stock_qty) > 0), [inventory]);
   const totals = useMemo(() => calculateInvoiceTotals(bill), [bill]);
 
+  // Use a ref so editInvoice (defined below) can be called from useEffect without hoisting issues
+  const editInvoiceRef = useRef(null);
+
   useEffect(() => {
     loadHistory();
-    // If ?inv=ID is in URL (from ClientsManager), auto-load that invoice
+    // If ?inv=ID is in URL (from ClientsManager), load that invoice after mount
     const invId = searchParams.get("inv");
-    if (invId) editInvoice(invId);
+    if (invId && editInvoiceRef.current) editInvoiceRef.current(invId);
   }, []);
 
   const loadHistory = async (term = "") => {
@@ -209,6 +213,8 @@ export default function BillingPOS() {
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (err) { toast.error(err.message); }
   };
+  // Assign to ref so useEffect (which runs before const hoisting) can call it
+  editInvoiceRef.current = editInvoice;
 
   const printInvoice = () => setTimeout(() => window.print(), 100);
 
@@ -255,7 +261,7 @@ export default function BillingPOS() {
         {billSaved && (
           <div style={{ margin: "0 0 1rem", padding: "1rem 1.25rem", background: "rgba(46,125,50,0.06)", border: "1px solid rgba(46,125,50,0.3)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem", flexWrap: "wrap" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-              <CheckCircle size={18} color="#2e7d32" />
+              <span style={{ fontSize: "1.1rem" }}>✅</span>
               <div>
                 <div style={{ fontSize: "0.82rem", fontWeight: 700, color: "#2e7d32" }}>Bill Saved Successfully</div>
                 <div style={{ fontSize: "0.68rem", color: "#666" }}>{bill.client_name} · {bill.invoice_number}</div>
