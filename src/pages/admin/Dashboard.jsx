@@ -1,11 +1,14 @@
 import { useAdmin } from "../../layouts/AdminLayout";
 import { Link, useNavigate } from "react-router-dom";
-import { buildAnalytics } from "../../lib/api";
+import { buildAnalytics, cleanDemographicData } from "../../lib/api";
 import { AlertTriangle, Package } from "lucide-react";
+import toast from "react-hot-toast";
+import { useState } from "react";
 
 export default function Dashboard() {
-  const { services, bookings, offers, invoices, customers, inventory } = useAdmin();
+  const { services, bookings, offers, invoices, customers, inventory, reload } = useAdmin();
   const navigate = useNavigate();
+  const [resetting, setResetting] = useState(false);
 
   const pendingBookings = bookings?.filter(b => b.status === "pending") || [];
   const analytics = buildAnalytics(invoices || []);
@@ -13,6 +16,24 @@ export default function Dashboard() {
   // Inventory metrics
   const lowStockItems = (inventory || []).filter(item => Number(item.stock_qty) <= Number(item.min_qty));
   const inventoryValue = (inventory || []).reduce((sum, item) => sum + (Number(item.stock_qty) * Number(item.unit_price)), 0);
+
+  const handleResetData = async () => {
+    const confirmed = window.confirm(
+      "WARNING: This will permanently erase all client profiles, bills/invoices, bookings, cash register reconciliation records, and staff attendance logs.\n\nService categories, service offerings, inventory configurations, and staff members will be preserved.\n\nAre you absolutely sure you want to proceed?"
+    );
+    if (!confirmed) return;
+
+    setResetting(true);
+    try {
+      await cleanDemographicData();
+      toast.success("Demographic & Transaction database reset successfully!");
+      if (reload) await reload();
+    } catch (err) {
+      toast.error(err.message || "Failed to clear client data");
+    } finally {
+      setResetting(false);
+    }
+  };
 
   return (
     <>
@@ -80,7 +101,7 @@ export default function Dashboard() {
               {lowStockItems.slice(0, 8).map(item => (
                 <div key={item.id} onClick={() => navigate("/inventory")} style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.35rem 0.75rem", background: "#fce4ec", border: "1px solid #ef9a9a", borderRadius: "2px" }}>
                   <span style={{ fontSize: "0.68rem", fontWeight: 600, color: "#b71c1c" }}>{item.name}</span>
-                  <span style={{ fontSize: "0.6rem", background: "#b71c1c", color: "#fff", padding: "1px 5px", fontWeight: 700 }}>{item.stock_qty} left</span>
+                  <span style={{ fontSize: "0.6" + "rem", background: "#b71c1c", color: "#fff", padding: "1px 5px", fontWeight: 700 }}>{item.stock_qty} left</span>
                 </div>
               ))}
               {lowStockItems.length > 8 && (
@@ -132,6 +153,23 @@ export default function Dashboard() {
             <Link to="/analytics" className="tbl-btn" style={{ textAlign: "center", display: "block", textDecoration: "none", padding: "0.8rem" }}>View Analytics</Link>
             <Link to="/imports" className="tbl-btn" style={{ textAlign: "center", display: "block", textDecoration: "none", padding: "0.8rem" }}>Import Sales</Link>
             <Link to="/services" className="tbl-btn" style={{ textAlign: "center", display: "block", textDecoration: "none", padding: "0.8rem" }}>Manage Services</Link>
+            <button
+              onClick={handleResetData}
+              disabled={resetting}
+              className="tbl-btn"
+              style={{
+                textAlign: "center",
+                display: "block",
+                padding: "0.8rem",
+                color: "#b71c1c",
+                borderColor: "#b71c1c",
+                background: "transparent",
+                fontWeight: "600",
+                cursor: "pointer"
+              }}
+            >
+              {resetting ? "Resetting Database..." : "⚠️ Reset Database"}
+            </button>
           </div>
         </div>
       </div>

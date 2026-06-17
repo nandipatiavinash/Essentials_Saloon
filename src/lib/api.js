@@ -789,3 +789,37 @@ export async function createCustomer(data) {
   if (error) throw error;
   return normCustomer(row);
 }
+
+// ─── Reset Database - Clear Client and Transaction/Billing History ──────────
+export async function cleanDemographicData() {
+  // 1. Delete invoice items
+  const { error: errItems } = await supabase.from("invoice_items").delete().gte("quantity", 0);
+  if (errItems) throw errItems;
+
+  // 2. Delete invoices
+  const { error: errInvoices } = await supabase.from("invoices").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+  if (errInvoices) throw errInvoices;
+
+  // 3. Delete transactions
+  const { error: errTx } = await supabase.from("transactions").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+  if (errTx) throw errTx;
+
+  // 4. Delete bookings
+  const { error: errBookings } = await supabase.from("bookings").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+  if (errBookings) throw errBookings;
+
+  // 5. Delete attendance
+  const { error: errAtt } = await supabase.from("attendance").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+  if (errAtt) throw errAtt;
+
+  // 6. Delete cash registers
+  const { error: errCash } = await supabase.from("cash_register").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+  if (errCash) throw errCash;
+
+  // 7. Delete customers
+  const { error: errCust } = await supabase.from("customers").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+  if (errCust) throw errCust;
+
+  return true;
+}
+
