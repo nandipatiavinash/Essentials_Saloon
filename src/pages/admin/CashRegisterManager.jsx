@@ -124,65 +124,97 @@ export default function CashRegisterManager() {
       // 1. Compile Sales Breakdown
       const salesText = `
 SALES SUMMARY
------------------------------
-Total Invoices: ${salesForDate.count}
-Total Revenue: Rs ${salesForDate.revenue.toLocaleString("en-IN")}
+---------------------------------------------
+Total Invoices:  ${salesForDate.count}
+Total Revenue:   Rs ${salesForDate.revenue.toLocaleString("en-IN")}
 Payment Methods:
-  - Cash Sales: Rs ${salesForDate.cash.toLocaleString("en-IN")}
-  - UPI Sales: Rs ${salesForDate.upi.toLocaleString("en-IN")}
-  - Card Sales: Rs ${salesForDate.card.toLocaleString("en-IN")}
-  - Bank Transfer: Rs ${salesForDate.bankTransfer.toLocaleString("en-IN")}
+  - Cash Sales:  Rs ${salesForDate.cash.toLocaleString("en-IN")}
+  - UPI Sales:   Rs ${salesForDate.upi.toLocaleString("en-IN")}
+  - Card Sales:  Rs ${salesForDate.card.toLocaleString("en-IN")}
+  - Bank Trans:  Rs ${salesForDate.bankTransfer.toLocaleString("en-IN")}
 `;
+
+      // 1b. Compile Tabular Invoice List
+      const invoiceList = salesForDate.invoiceList || [];
+      let invoicesTableText = `\nCLIENT BILLING RECORDS (TODAY)\n`;
+      invoicesTableText += `-----------------------------------------------------------------------\n`;
+      invoicesTableText += `| Client Name     | Services Rendered             | Total Bill (Rs)   |\n`;
+      invoicesTableText += `-----------------------------------------------------------------------\n`;
+      if (invoiceList.length) {
+        invoiceList.forEach(inv => {
+          const clientName = (inv.client_name || "Walk-in").padEnd(15).slice(0, 15);
+          
+          // Get services from nested items
+          const itemNames = (inv.invoice_items || inv.items || []).map(i => i.service_name).join(", ") || "Service";
+          const services = itemNames.padEnd(29).slice(0, 29);
+          
+          const amount = String(Number(inv.total || 0).toFixed(2)).padStart(17).slice(0, 17);
+          invoicesTableText += `| ${clientName} | ${services} | ${amount} |\n`;
+        });
+      } else {
+        invoicesTableText += `| No transactions recorded today.                                     |\n`;
+      }
+      invoicesTableText += `-----------------------------------------------------------------------\n`;
 
       // 2. Compile Cash Registry Reconciliation
       const registerText = `
-CASH RECONCILIATION
------------------------------
-Opening Cash: Rs ${Number(activeRegister.opening_cash).toLocaleString("en-IN")}
-Expenses (Daily payouts): Rs ${Number(activeRegister.expenses).toLocaleString("en-IN")}
-  - Expense Notes: ${activeRegister.expense_notes || "None"}
-Expected Cash in Drawer: Rs ${expectedCash.toLocaleString("en-IN")}
-Actual Closing Cash: ${activeRegister.status === "closed" ? "Rs " + Number(activeRegister.closing_cash).toLocaleString("en-IN") : "Register still open"}
-Discrepancy: ${activeRegister.status === "closed" ? "Rs " + (Number(activeRegister.closing_cash) - expectedCash).toLocaleString("en-IN") : "N/A"}
-Notes: ${activeRegister.notes || "None"}
+CASH DRAWER RECONCILIATION
+---------------------------------------------
+Opening Cash:    Rs ${Number(activeRegister.opening_cash).toLocaleString("en-IN")}
+Cash Expenses:   Rs ${Number(activeRegister.expenses).toLocaleString("en-IN")}
+  - Notes:       ${activeRegister.expense_notes || "None"}
+Expected Cash:   Rs ${expectedCash.toLocaleString("en-IN")}
+Actual Cash:     ${activeRegister.status === "closed" ? "Rs " + Number(activeRegister.closing_cash).toLocaleString("en-IN") : "Drawer Still Open"}
+Discrepancy:     ${activeRegister.status === "closed" ? "Rs " + (Number(activeRegister.closing_cash) - expectedCash).toLocaleString("en-IN") : "N/A"}
+Drawer Notes:    ${activeRegister.notes || "None"}
 `;
 
-      // 3. Compile Attendance
+      // 3. Compile Attendance in Tabular format
       const attendanceList = (attendance || []).filter(a => a.date === date);
-      let attendanceText = `\nSTAFF ATTENDANCE\n-----------------------------\n`;
+      let attendanceText = `\nSTAFF ATTENDANCE LOGS\n`;
+      attendanceText += `---------------------------------------------------------\n`;
+      attendanceText += `| Staff Member      | Status       | Work Logs (In/Out) |\n`;
+      attendanceText += `---------------------------------------------------------\n`;
       if (attendanceList.length) {
         attendanceList.forEach(a => {
-          const empName = staff.find(s => s.id === a.staff_id)?.name || "Unknown Staff";
-          const checkin = a.check_in ? ` (In: ${a.check_in})` : "";
-          attendanceText += `• ${empName}: ${a.status.toUpperCase()}${checkin}\n`;
+          const empName = (staff.find(s => s.id === a.staff_id)?.name || "Unknown Staff").padEnd(17).slice(0, 17);
+          const statusStr = a.status.toUpperCase().padEnd(12).slice(0, 12);
+          const logsStr = ((a.check_in ? `In: ${a.check_in.slice(0, 5)}` : "") + (a.check_out ? ` Out: ${a.check_out.slice(0, 5)}` : "") || "No Check Logs").padEnd(18).slice(0, 18);
+          
+          attendanceText += `| ${empName} | ${statusStr} | ${logsStr} |\n`;
         });
       } else {
-        attendanceText += `No attendance logged today.\n`;
+        attendanceText += `| No attendance logs recorded today.                    |\n`;
       }
+      attendanceText += `---------------------------------------------------------\n`;
 
       // 4. Compile Inventory Alerts
       const lowStock = (inventory || []).filter(item => Number(item.stock_qty) <= Number(item.min_qty));
-      let inventoryText = `\nLOW STOCK WARNINGS\n-----------------------------\n`;
+      let inventoryText = `\nINVENTORY REORDER WARNINGS\n`;
+      inventoryText += `---------------------------------------------\n`;
       if (lowStock.length) {
         lowStock.forEach(item => {
-          inventoryText += `⚠️ ${item.name} (Qty: ${item.stock_qty} / Min: ${item.min_qty})\n`;
+          inventoryText += `⚠️ ${item.name.padEnd(20).slice(0, 20)} (Qty: ${item.stock_qty} / Min: ${item.min_qty})\n`;
         });
       } else {
         inventoryText += `All inventory levels normal.\n`;
       }
+      inventoryText += `---------------------------------------------\n`;
 
       const emailTextBody = `
-=========================================
+=======================================================================
 TONI & GUY ESSENSUALS GORANTLA - EOD REPORT
 Date: ${new Date(date).toLocaleDateString("en-IN")}
-=========================================
+=======================================================================
 ${salesText}
+${invoicesTableText}
 ${registerText}
 ${attendanceText}
 ${inventoryText}
------------------------------------------
+-----------------------------------------------------------------------
 Report generated: ${new Date().toLocaleString("en-IN")}
 Toni & Guy Essensuals Gorantla, Guntur
+=======================================================================
 `;
 
       const adminEmail = settings.email || "gorantla@essensualssalon.com";

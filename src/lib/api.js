@@ -39,7 +39,7 @@ export async function fetchAdminData() {
     t("gallery").select("*").order("id"),
     t("salon_settings").select("*").eq("id", 1).maybeSingle(),
     t("bookings").select("*").order("created_at", { ascending: false }),
-    optional(t("invoices").select("*, customers(*)").order("billing_at", { ascending: false }).limit(250), []),
+    optional(t("invoices").select("*, customers(*), invoice_items(*)").order("billing_at", { ascending: false }).limit(250), []),
     optional(t("customers").select("*").order("last_visit_at", { ascending: false }).limit(500), []),
     optional(t("transactions").select("*").order("created_at", { ascending: false }).limit(250), []),
     optional(t("report_logs").select("*").order("created_at", { ascending: false }).limit(100), []),
@@ -96,7 +96,8 @@ export async function createCategory(data) {
   return row;
 }
 export async function updateCategory(id, data) {
-  const { data: row, error } = await t("categories").update(data).eq("id", id).select().single();
+  const { id: _, ...rest } = data;
+  const { data: row, error } = await t("categories").update(rest).eq("id", id).select().single();
   if (error) throw error;
   return row;
 }
@@ -112,7 +113,8 @@ export async function createOffer(data) {
   return row;
 }
 export async function updateOffer(id, data) {
-  const { data: row, error } = await t("offers").update(data).eq("id", id).select().single();
+  const { id: _, ...rest } = data;
+  const { data: row, error } = await t("offers").update(rest).eq("id", id).select().single();
   if (error) throw error;
   return row;
 }
@@ -128,7 +130,8 @@ export async function createGalleryItem(data) {
   return row;
 }
 export async function updateGalleryItem(id, data) {
-  const { data: row, error } = await t("gallery").update(data).eq("id", id).select().single();
+  const { id: _, ...rest } = data;
+  const { data: row, error } = await t("gallery").update(rest).eq("id", id).select().single();
   if (error) throw error;
   return row;
 }
@@ -470,6 +473,7 @@ function normInvoice(row) {
   return {
     ...row,
     customer: row.customers || null,
+    invoice_items: row.invoice_items || [],
     subtotal: Number(row.subtotal || 0),
     discount: Number(row.discount || 0),
     tax: Number(row.tax || 0),
@@ -550,7 +554,8 @@ export async function createStaff(data) {
 }
 
 export async function updateStaff(id, data) {
-  const { data: row, error } = await t("staff").update(data).eq("id", id).select().single();
+  const { id: _, created_at: _c, updated_at: _u, ...rest } = data;
+  const { data: row, error } = await t("staff").update(rest).eq("id", id).select().single();
   if (error) throw error;
   return row;
 }
@@ -583,7 +588,8 @@ export async function createInventoryItem(data) {
 }
 
 export async function updateInventoryItem(id, data) {
-  const { data: row, error } = await t("inventory").update(data).eq("id", id).select().single();
+  const { id: _, created_at: _c, updated_at: _u, ...rest } = data;
+  const { data: row, error } = await t("inventory").update(rest).eq("id", id).select().single();
   if (error) throw error;
   return row;
 }
