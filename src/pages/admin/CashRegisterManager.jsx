@@ -236,7 +236,7 @@ Toni & Guy Essensuals Gorantla, Guntur
               <div className="table-title">Cash Register Register</div>
               <div className="pos-sub">Daily drawer cash reconciliations</div>
             </div>
-            <input type="date" className="form-input" value={date} onChange={e => setDate(e.target.value)} style={{ maxWidth: 160, padding: "0.5rem 1rem", fontSize: "0.75rem" }} />
+            <input type="date" className="form-input" value={date} disabled style={{ maxWidth: 160, padding: "0.5rem 1rem", fontSize: "0.75rem", opacity: 0.8 }} />
           </div>
 
           {!activeRegister ? (

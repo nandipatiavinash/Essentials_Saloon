@@ -209,6 +209,9 @@ export default function BillingPOS() {
         membership_end: details.invoice.customer?.membership_end || "",
         billing_at: new Date(details.invoice.billing_at).toISOString().slice(0, 16),
       });
+      setInvoice(details.invoice);
+      setInvoiceItems((details.items || []).map(item => ({ ...item, total: Number(item.quantity || 1) * Number(item.price || 0) })));
+      setBillSaved(true);
       setAttemptedSubmit(false);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (err) { toast.error(err.message); }
@@ -239,10 +242,10 @@ export default function BillingPOS() {
         <div className="pos-header">
           <div>
             <div className="table-title">
-              {billSaved ? `✅ ${bill.invoice_number || "Invoice"} — Saved` : bill.id ? "Edit Invoice" : "New Billing"}
+              {billSaved ? `👁️ View Invoice: ${bill.invoice_number || ""}` : bill.id ? "Edit Invoice" : "New Billing"}
             </div>
             <div className="pos-sub">
-              {billSaved ? "Bill saved. Print, WhatsApp below — or start a new bill." : "Fast multi-service/product checkout"}
+              {billSaved ? "Viewing invoice details. Start a new bill to make changes." : "Fast multi-service/product checkout"}
             </div>
           </div>
           <div style={{ display: "flex", gap: "0.5rem" }}>
@@ -275,134 +278,136 @@ export default function BillingPOS() {
           </div>
         )}
 
-        <div className="pos-section">
-          <div className="form-row">
-            <div className="form-group">
-              <label className="form-label">Client Name</label>
-              <input className="form-input pos-input" value={bill.client_name} onChange={(e) => setBill({ ...bill, client_name: e.target.value })} required />
-            </div>
-            <div className="form-group">
-              <label className="form-label">Mobile or Membership ID</label>
-              <div style={{ display: "flex", gap: "0.5rem" }}>
-                <input className="form-input pos-input" value={bill.mobile} onChange={(e) => setBill({ ...bill, mobile: e.target.value })} placeholder="Phone or MEM-YYYY-XXXXX" required />
-                <button type="button" className="tbl-btn" onClick={lookupCustomer} style={{ flexShrink: 0 }}>Check Membership</button>
+        <fieldset disabled={billSaved} style={{ border: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: "1rem" }}>
+          <div className="pos-section">
+            <div className="form-row">
+              <div className="form-group">
+                <label className="form-label">Client Name</label>
+                <input className="form-input pos-input" value={bill.client_name} onChange={(e) => setBill({ ...bill, client_name: e.target.value })} required />
               </div>
-            </div>
-          </div>
-          {bill.is_member && (
-            <div style={{ marginTop: "0.75rem", padding: "0.75rem 1rem", background: "rgba(201,185,154,0.08)", border: "1px solid rgba(201,185,154,0.3)", color: "#c9b99a", fontSize: "0.72rem", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div>
-                <strong>★ Active Member</strong>
-                {bill.membership_id && <span style={{ marginLeft: "10px", opacity: 0.8 }}>ID: {bill.membership_id}</span>}
-              </div>
-              {bill.membership_end && (
-                <div>Expires: {new Date(bill.membership_end).toLocaleDateString("en-IN")} <span style={{ marginLeft: "8px", fontWeight: "bold" }}>({getDaysRemaining(bill.membership_end)} days left)</span></div>
-              )}
-            </div>
-          )}
-          <div className="form-row" style={{ marginTop: "1rem" }}>
-            <div className="form-group" style={{ zIndex: 10 }}>
-              <label className="form-label">Staff Name</label>
-              <SearchableStaffDropdown staffList={staff} value={bill.staff_name} onChange={(val) => setBill({ ...bill, staff_name: val })} placeholder="Select Staff" isInvalid={attemptedSubmit && !bill.staff_name} />
-            </div>
-            <div className="form-group">
-              <label className="form-label">Billing Date/Time</label>
-              <input type="datetime-local" className="form-input" value={bill.billing_at} onChange={(e) => setBill({ ...bill, billing_at: e.target.value })} />
-            </div>
-          </div>
-        </div>
-
-        <div className="pos-section">
-          <div style={{ display: "flex", gap: "0.5rem", marginBottom: "0.75rem" }}>
-            <button type="button" className={`tbl-btn${addTab === "services" ? " active" : ""}`} onClick={() => setAddTab("services")}>✂️ Services</button>
-            <button type="button" className={`tbl-btn${addTab === "products" ? " active" : ""}`} onClick={() => setAddTab("products")}>📦 Products ({activeInventory.length} in stock)</button>
-          </div>
-
-          {addTab === "services" && (
-            <div className="service-picker">
-              <select className="form-input" defaultValue="" onChange={(e) => { addService(e.target.value); e.target.value = ""; }}>
-                <option value="" disabled>Select service to add</option>
-                {activeServices.map((svc) => (
-                  <option key={svc.id} value={svc.id}>
-                    {svc.name} — Rs {svc.price_from}{bill.is_member && svc.member_price ? ` (Member: Rs ${svc.member_price})` : ""}
-                  </option>
-                ))}
-              </select>
-              <button type="button" className="tbl-btn" onClick={() => addService(activeServices[0]?.id)}><Plus size={14} /> Quick add</button>
-            </div>
-          )}
-
-          {addTab === "products" && (
-            <div className="service-picker">
-              <select className="form-input" defaultValue="" onChange={(e) => { addProduct(e.target.value); e.target.value = ""; }}>
-                <option value="" disabled>Select product to sell</option>
-                {activeInventory.map((p) => (
-                  <option key={p.id} value={p.id}>{p.name} — Rs {p.unit_price} (Stock: {p.stock_qty})</option>
-                ))}
-              </select>
-              {activeInventory.length === 0 && <span style={{ fontSize: "0.72rem", color: "#b71c1c", alignSelf: "center" }}>No products in stock</span>}
-            </div>
-          )}
-
-          <div className="pos-items">
-            {bill.items.map((item, index) => (
-              <div className="pos-item" key={`${item.service_id || item.inventory_id}-${index}`} style={{ overflow: "visible" }}>
-                <div>
-                  <div className="pos-item-name">
-                    {item.item_type === "product" && (
-                      <span style={{ fontSize: "0.55rem", background: "rgba(201,185,154,0.2)", color: "#c9b99a", padding: "1px 5px", marginRight: "5px", fontWeight: 700, letterSpacing: "0.05em" }}>PRODUCT</span>
-                    )}
-                    {item.service_name}
-                  </div>
-                  <div style={{ marginTop: "0.25rem", width: "160px" }}>
-                    <SearchableStaffDropdown staffList={staff} value={item.staff_name} onChange={(val) => updateItem(index, { staff_name: val })} placeholder="Select Staff" isInvalid={attemptedSubmit && !item.staff_name} />
-                  </div>
+              <div className="form-group">
+                <label className="form-label">Mobile or Membership ID</label>
+                <div style={{ display: "flex", gap: "0.5rem" }}>
+                  <input className="form-input pos-input" value={bill.mobile} onChange={(e) => setBill({ ...bill, mobile: e.target.value })} placeholder="Phone or MEM-YYYY-XXXXX" required />
+                  <button type="button" className="tbl-btn" onClick={lookupCustomer} style={{ flexShrink: 0 }}>Check Membership</button>
                 </div>
-                <input className="mini-input qty" type="number" min="1" value={item.quantity} onChange={(e) => updateItem(index, { quantity: e.target.value })} />
-                <input className="mini-input price" type="number" min="0" value={item.price} onChange={(e) => updateItem(index, { price: e.target.value })} />
-                <div className="pos-line-total">Rs {(Number(item.quantity || 1) * Number(item.price || 0)).toLocaleString("en-IN")}</div>
-                <button type="button" className="icon-btn danger" onClick={() => removeItem(index)} aria-label="Remove item"><Trash2 size={16} /></button>
               </div>
-            ))}
-            {!bill.items.length && <div className="admin-empty compact">Add services or products to begin a bill.</div>}
+            </div>
+            {bill.is_member && (
+              <div style={{ marginTop: "0.75rem", padding: "0.75rem 1rem", background: "rgba(201,185,154,0.08)", border: "1px solid rgba(201,185,154,0.3)", color: "#c9b99a", fontSize: "0.72rem", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div>
+                  <strong>★ Active Member</strong>
+                  {bill.membership_id && <span style={{ marginLeft: "10px", opacity: 0.8 }}>ID: {bill.membership_id}</span>}
+                </div>
+                {bill.membership_end && (
+                  <div>Expires: {new Date(bill.membership_end).toLocaleDateString("en-IN")} <span style={{ marginLeft: "8px", fontWeight: "bold" }}>({getDaysRemaining(bill.membership_end)} days left)</span></div>
+                )}
+              </div>
+            )}
+            <div className="form-row" style={{ marginTop: "1rem" }}>
+              <div className="form-group" style={{ zIndex: 10 }}>
+                <label className="form-label">Staff Name</label>
+                <SearchableStaffDropdown staffList={staff} value={bill.staff_name} onChange={(val) => setBill({ ...bill, staff_name: val })} placeholder="Select Staff" isInvalid={attemptedSubmit && !bill.staff_name} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Billing Date/Time</label>
+                <input type="datetime-local" className="form-input" value={bill.billing_at} onChange={(e) => setBill({ ...bill, billing_at: e.target.value })} />
+              </div>
+            </div>
           </div>
-        </div>
 
-        <div className="pos-section">
-          <div className="form-row">
-            <div className="form-group">
-              <label className="form-label">Discount</label>
-              <input type="number" min="0" className="form-input" value={bill.discount} onChange={(e) => setBill({ ...bill, discount: e.target.value })} />
+          <div className="pos-section">
+            <div style={{ display: "flex", gap: "0.5rem", marginBottom: "0.75rem" }}>
+              <button type="button" className={`tbl-btn${addTab === "services" ? " active" : ""}`} onClick={() => setAddTab("services")}>✂️ Services</button>
+              <button type="button" className={`tbl-btn${addTab === "products" ? " active" : ""}`} onClick={() => setAddTab("products")}>📦 Products ({activeInventory.length} in stock)</button>
             </div>
-            <div className="form-group">
-              <label className="form-label">Tip Amount</label>
-              <input type="number" min="0" className="form-input" value={bill.tip} onChange={(e) => setBill({ ...bill, tip: e.target.value })} />
+
+            {addTab === "services" && (
+              <div className="service-picker">
+                <select className="form-input" defaultValue="" onChange={(e) => { addService(e.target.value); e.target.value = ""; }}>
+                  <option value="" disabled>Select service to add</option>
+                  {activeServices.map((svc) => (
+                    <option key={svc.id} value={svc.id}>
+                      {svc.name} — Rs {svc.price_from}{bill.is_member && svc.member_price ? ` (Member: Rs ${svc.member_price})` : ""}
+                    </option>
+                  ))}
+                </select>
+                <button type="button" className="tbl-btn" onClick={() => addService(activeServices[0]?.id)}><Plus size={14} /> Quick add</button>
+              </div>
+            )}
+
+            {addTab === "products" && (
+              <div className="service-picker">
+                <select className="form-input" defaultValue="" onChange={(e) => { addProduct(e.target.value); e.target.value = ""; }}>
+                  <option value="" disabled>Select product to sell</option>
+                  {activeInventory.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name} — Rs {p.unit_price} (Stock: {p.stock_qty})</option>
+                  ))}
+                </select>
+                {activeInventory.length === 0 && <span style={{ fontSize: "0.72rem", color: "#b71c1c", alignSelf: "center" }}>No products in stock</span>}
+              </div>
+            )}
+
+            <div className="pos-items">
+              {bill.items.map((item, index) => (
+                <div className="pos-item" key={`${item.service_id || item.inventory_id}-${index}`} style={{ overflow: "visible" }}>
+                  <div>
+                    <div className="pos-item-name">
+                      {item.item_type === "product" && (
+                        <span style={{ fontSize: "0.55rem", background: "rgba(201,185,154,0.2)", color: "#c9b99a", padding: "1px 5px", marginRight: "5px", fontWeight: 700, letterSpacing: "0.05em" }}>PRODUCT</span>
+                      )}
+                      {item.service_name}
+                    </div>
+                    <div style={{ marginTop: "0.25rem", width: "160px" }}>
+                      <SearchableStaffDropdown staffList={staff} value={item.staff_name} onChange={(val) => updateItem(index, { staff_name: val })} placeholder="Select Staff" isInvalid={attemptedSubmit && !item.staff_name} />
+                    </div>
+                  </div>
+                  <input className="mini-input qty" type="number" min="1" value={item.quantity} onChange={(e) => updateItem(index, { quantity: e.target.value })} />
+                  <input className="mini-input price" type="number" min="0" value={item.price} onChange={(e) => updateItem(index, { price: e.target.value })} />
+                  <div className="pos-line-total">Rs {(Number(item.quantity || 1) * Number(item.price || 0)).toLocaleString("en-IN")}</div>
+                  <button type="button" className="icon-btn danger" onClick={() => removeItem(index)} aria-label="Remove item"><Trash2 size={16} /></button>
+                </div>
+              ))}
+              {!bill.items.length && <div className="admin-empty compact">Add services or products to begin a bill.</div>}
             </div>
-            <div className="form-group">
-              <label className="form-label">GST / Tax</label>
-              <div className="tax-row">
-                <label className="toggle"><input type="checkbox" checked={bill.tax_enabled} onChange={(e) => setBill({ ...bill, tax_enabled: e.target.checked })} /><span className="toggle-slider"></span></label>
-                <input type="number" min="0" className="form-input" value={bill.tax_rate} onChange={(e) => setBill({ ...bill, tax_rate: e.target.value })} disabled={!bill.tax_enabled} />
+          </div>
+
+          <div className="pos-section">
+            <div className="form-row">
+              <div className="form-group">
+                <label className="form-label">Discount</label>
+                <input type="number" min="0" className="form-input" value={bill.discount} onChange={(e) => setBill({ ...bill, discount: e.target.value })} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Tip Amount</label>
+                <input type="number" min="0" className="form-input" value={bill.tip} onChange={(e) => setBill({ ...bill, tip: e.target.value })} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">GST / Tax</label>
+                <div className="tax-row">
+                  <label className="toggle"><input type="checkbox" checked={bill.tax_enabled} onChange={(e) => setBill({ ...bill, tax_enabled: e.target.checked })} /><span className="toggle-slider"></span></label>
+                  <input type="number" min="0" className="form-input" value={bill.tax_rate} onChange={(e) => setBill({ ...bill, tax_rate: e.target.value })} disabled={!bill.tax_enabled} />
+                </div>
               </div>
             </div>
-          </div>
-          <div className="form-row">
-            <div className="form-group">
-              <label className="form-label">Payment Method</label>
-              <select className="form-input" value={bill.payment_method} onChange={(e) => setBill({ ...bill, payment_method: e.target.value })}>
-                <option>Cash</option><option>UPI</option><option>Card</option><option>Bank Transfer</option>
-              </select>
+            <div className="form-row">
+              <div className="form-group">
+                <label className="form-label">Payment Method</label>
+                <select className="form-input" value={bill.payment_method} onChange={(e) => setBill({ ...bill, payment_method: e.target.value })}>
+                  <option>Cash</option><option>UPI</option><option>Card</option><option>Bank Transfer</option>
+                </select>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Transaction ID</label>
+                <input className="form-input" value={bill.transaction_id} onChange={(e) => setBill({ ...bill, transaction_id: e.target.value })} />
+              </div>
             </div>
             <div className="form-group">
-              <label className="form-label">Transaction ID</label>
-              <input className="form-input" value={bill.transaction_id} onChange={(e) => setBill({ ...bill, transaction_id: e.target.value })} />
+              <label className="form-label">Notes</label>
+              <textarea className="form-input" rows="2" value={bill.notes} onChange={(e) => setBill({ ...bill, notes: e.target.value })}></textarea>
             </div>
           </div>
-          <div className="form-group">
-            <label className="form-label">Notes</label>
-            <textarea className="form-input" rows="2" value={bill.notes} onChange={(e) => setBill({ ...bill, notes: e.target.value })}></textarea>
-          </div>
-        </div>
+        </fieldset>
       </form>
 
       <aside className="invoice-preview">
