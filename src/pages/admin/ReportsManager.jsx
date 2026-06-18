@@ -6,7 +6,7 @@ import { formatEodReportMessage, getWhatsAppProvider, buildWhatsAppLink } from "
 import toast from "react-hot-toast";
 
 export default function ReportsManager() {
-  const { invoices, customers, reportLogs, settings, staff, attendance, cashRegister } = useAdmin();
+  const { invoices, customers, reportLogs, settings, staff, attendance, cashRegister, inventory } = useAdmin();
   const provider = getWhatsAppProvider(settings);
   
   // Date Range Filters for Metric Cards & Table
