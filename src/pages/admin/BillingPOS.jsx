@@ -6,6 +6,7 @@ import { useSearchParams } from "react-router-dom";
 import { calculateInvoiceTotals, fetchInvoiceDetails, findCustomerByPhone, saveInvoice, searchInvoices } from "../../lib/api";
 import { buildWhatsAppLink, formatInvoiceMessage } from "../../lib/whatsapp";
 import SearchableStaffDropdown from "../../components/SearchableStaffDropdown";
+import SearchableServiceDropdown from "../../components/SearchableServiceDropdown";
 
 const emptyBill = () => ({
   client_name: "",
@@ -114,7 +115,7 @@ export default function BillingPOS() {
       }
       return {
         ...current,
-        items: [...current.items, {
+        items: [{
           item_type: "service",
           service_id: service.id,
           service_name: service.name,
@@ -131,7 +132,7 @@ export default function BillingPOS() {
     if (!product) return;
     setBill((current) => ({
       ...current,
-      items: [...current.items, {
+      items: [{
         item_type: "product",
         inventory_id: product.id,
         service_id: null,
@@ -323,16 +324,14 @@ export default function BillingPOS() {
             </div>
 
             {addTab === "services" && (
-              <div className="service-picker">
-                <select className="form-input" defaultValue="" onChange={(e) => { addService(e.target.value); e.target.value = ""; }}>
-                  <option value="" disabled>Select service to add</option>
-                  {activeServices.map((svc) => (
-                    <option key={svc.id} value={svc.id}>
-                      {svc.name} — Rs {svc.price_from}{bill.is_member && svc.member_price ? ` (Member: Rs ${svc.member_price})` : ""}
-                    </option>
-                  ))}
-                </select>
-                <button type="button" className="tbl-btn" onClick={() => addService(activeServices[0]?.id)}><Plus size={14} /> Quick add</button>
+              <div className="service-picker" style={{ width: "100%", display: "block" }}>
+                <SearchableServiceDropdown 
+                  servicesList={activeServices} 
+                  value={""} 
+                  onChange={addService} 
+                  disabled={billSaved} 
+                  isMember={bill.is_member} 
+                />
               </div>
             )}
 
