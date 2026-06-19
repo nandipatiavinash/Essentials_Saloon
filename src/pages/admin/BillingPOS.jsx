@@ -42,8 +42,6 @@ export default function BillingPOS() {
   const [attemptedSubmit, setAttemptedSubmit] = useState(false);
   const [addTab, setAddTab] = useState("services");
 
-  const [selectedServiceId, setSelectedServiceId] = useState("");
-  const [selectedProductId, setSelectedProductId] = useState("");
 
   const activeServices = useMemo(() => (services || []).filter((svc) => svc.active), [services]);
   const activeInventory = useMemo(() => (inventory || []).filter(item => Number(item.stock_qty) > 0), [inventory]);
@@ -362,61 +360,34 @@ export default function BillingPOS() {
             </div>
 
             {addTab === "services" && (
-              <div className="service-picker" style={{ display: "flex", gap: "0.5rem", width: "100%" }}>
-                <div style={{ flex: 1 }}>
-                  <SearchableServiceDropdown 
-                    servicesList={activeServices} 
-                    value={activeServices.find(s => String(s.id) === String(selectedServiceId))?.name || ""} 
-                    onChange={setSelectedServiceId} 
-                    disabled={billSaved} 
-                    isMember={bill.is_member} 
-                  />
-                </div>
-                <button 
-                  type="button" 
-                  className="tbl-btn" 
-                  disabled={billSaved || !selectedServiceId}
-                  onClick={() => {
-                    if (selectedServiceId) {
-                      addService(selectedServiceId);
-                      setSelectedServiceId("");
-                    }
-                  }}
-                  style={{ flexShrink: 0, padding: "0.55rem 1rem" }}
-                >
-                  <Plus size={14} /> Add Service
-                </button>
+              <div className="service-picker" style={{ width: "100%", display: "block" }}>
+                <SearchableServiceDropdown 
+                  servicesList={activeServices} 
+                  value={""} 
+                  onChange={addService} 
+                  disabled={billSaved} 
+                  isMember={bill.is_member} 
+                />
               </div>
             )}
 
             {addTab === "products" && (
-              <div className="service-picker" style={{ display: "flex", gap: "0.5rem", width: "100%" }}>
+              <div className="service-picker">
                 <select 
                   className="form-input" 
-                  value={selectedProductId} 
-                  onChange={(e) => setSelectedProductId(e.target.value)}
+                  value="" 
+                  onChange={(e) => { 
+                    if (e.target.value) {
+                      addProduct(e.target.value); 
+                    }
+                  }}
                   disabled={billSaved}
-                  style={{ flex: 1 }}
                 >
                   <option value="" disabled>Select product to sell</option>
                   {activeInventory.map((p) => (
                     <option key={p.id} value={p.id}>{p.name} — Rs {p.unit_price} (Stock: {p.stock_qty})</option>
                   ))}
                 </select>
-                <button 
-                  type="button" 
-                  className="tbl-btn" 
-                  disabled={billSaved || !selectedProductId}
-                  onClick={() => {
-                    if (selectedProductId) {
-                      addProduct(selectedProductId);
-                      setSelectedProductId("");
-                    }
-                  }}
-                  style={{ flexShrink: 0, padding: "0.55rem 1rem" }}
-                >
-                  <Plus size={14} /> Add Product
-                </button>
                 {activeInventory.length === 0 && <span style={{ fontSize: "0.72rem", color: "#b71c1c", alignSelf: "center" }}>No products in stock</span>}
               </div>
             )}
