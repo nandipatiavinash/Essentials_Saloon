@@ -21,6 +21,546 @@ export default function ReportsManager() {
   const [emailReportDate, setEmailReportDate] = useState(new Date().toISOString().slice(0, 10));
   const [emailRecipient, setEmailRecipient] = useState(settings?.email || "admin@example.com");
   const [sendingEmail, setSendingEmail] = useState(false);
+  const [reportFormat, setReportFormat] = useState("text"); // "text" | "pdf" | "excel" | "both"
+
+  const getEodReportData = (targetDate) => {
+    const dayInvoices = (invoices || []).filter(
+      (inv) => inv.billing_at?.slice(0, 10) === targetDate && inv.status !== "void"
+    );
+    const dayAttendance = (attendance || []).filter((att) => att.date === targetDate);
+    const dayRegister = (cashRegister || []).find((reg) => reg.date === targetDate);
+    const lowStock = (inventory || []).filter(
+      (item) => Number(item.stock_qty) <= Number(item.min_qty)
+    );
+
+    let totalNet = 0;
+    let totalGST = 0;
+    let totalTips = 0;
+    let totalGross = 0;
+
+    const paymentBreakdown = {};
+    const staffStats = {};
+
+    dayInvoices.forEach((inv) => {
+      const netAmt = Number(inv.subtotal || 0) - Number(inv.discount || 0);
+      const gst = Number(inv.tax || 0);
+      const tip = Number(inv.tip || 0);
+      const total = Number(inv.total || 0);
+      const payment = inv.payment_method || "Unknown";
+
+      totalNet += netAmt;
+      totalGST += gst;
+      totalTips += tip;
+      totalGross += total;
+
+      paymentBreakdown[payment] = (paymentBreakdown[payment] || 0) + total;
+
+      (inv.invoice_items || []).forEach((item) => {
+        const itemStaff = item.staff_name || inv.staff_name || "Unknown Stylist";
+        const itemType = item.item_type || "service";
+        const itemVal = Number(item.quantity || 1) * Number(item.price || 0);
+
+        if (!staffStats[itemStaff]) {
+          staffStats[itemStaff] = { clients: new Set(), netServices: 0, products: 0, tips: 0, total: 0 };
+        }
+        staffStats[itemStaff].clients.add(inv.id);
+        if (itemType === "product") {
+          staffStats[itemStaff].products += itemVal;
+        } else {
+          staffStats[itemStaff].netServices += itemVal;
+        }
+        staffStats[itemStaff].total += itemVal;
+      });
+
+      const mainStylist = inv.staff_name || "Unknown Stylist";
+      if (mainStylist) {
+        if (!staffStats[mainStylist]) {
+          staffStats[mainStylist] = { clients: new Set(), netServices: 0, products: 0, tips: 0, total: 0 };
+        }
+        staffStats[mainStylist].tips += tip;
+        staffStats[mainStylist].total += tip;
+      }
+    });
+
+    return {
+      date: targetDate,
+      invoices: dayInvoices,
+      attendance: dayAttendance,
+      register: dayRegister,
+      lowStock,
+      totalNet,
+      totalGST,
+      totalTips,
+      totalGross,
+      paymentBreakdown,
+      staffStats
+    };
+  };
+
+  const handleExportPDF = () => {
+    const data = getEodReportData(emailReportDate);
+    if (!data.invoices.length && !data.attendance.length && !data.register) {
+      toast.error("No EOD data recorded on this date to export.");
+      return;
+    }
+
+    const salonName = settings?.name || "Toni & Guy Essensuals Gorantla";
+    const formattedDate = new Date(emailReportDate).toLocaleDateString("en-IN", {
+      day: "numeric",
+      month: "long",
+      year: "numeric"
+    });
+
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) {
+      toast.error("Failed to open print window. Please allow popups.");
+      return;
+    }
+
+    const html = `
+      <html>
+        <head>
+          <title>EOD Report - ${formattedDate}</title>
+          <style>
+            body {
+              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+              padding: 40px;
+              color: #333;
+              line-height: 1.4;
+            }
+            .header {
+              border-bottom: 2px solid #c9b99a;
+              padding-bottom: 20px;
+              margin-bottom: 25px;
+            }
+            .header h1 {
+              font-size: 24px;
+              margin: 0;
+              color: #1a1a1a;
+              text-transform: uppercase;
+              letter-spacing: 1px;
+            }
+            .header p {
+              margin: 5px 0 0 0;
+              color: #666;
+              font-size: 14px;
+            }
+            .section {
+              margin-bottom: 30px;
+              page-break-inside: avoid;
+            }
+            .section-title {
+              font-size: 16px;
+              font-weight: 700;
+              color: #1a1a1a;
+              border-bottom: 1px solid #ddd;
+              padding-bottom: 5px;
+              margin-bottom: 12px;
+              text-transform: uppercase;
+            }
+            table {
+              width: 100%;
+              border-collapse: collapse;
+              margin-top: 10px;
+              font-size: 12px;
+            }
+            th, td {
+              border: 1px solid #eee;
+              padding: 10px 8px;
+              text-align: left;
+            }
+            th {
+              background-color: #f9f9f9;
+              font-weight: 600;
+              color: #555;
+            }
+            .text-right {
+              text-align: right;
+            }
+            .text-center {
+              text-align: center;
+            }
+            .bold {
+              font-weight: bold;
+            }
+            .totals-row td {
+              background-color: #fcfbf8;
+              border-top: 2px solid #c9b99a;
+              font-weight: bold;
+            }
+            .summary-box {
+              background: #fafaf8;
+              border: 1px solid #eadecc;
+              border-radius: 4px;
+              padding: 15px;
+              margin-top: 10px;
+              font-size: 13px;
+            }
+            .summary-box table {
+              margin-top: 0;
+              font-size: 13px;
+            }
+            .summary-box table td {
+              border: none;
+              padding: 4px 0;
+            }
+            .badge {
+              display: inline-block;
+              padding: 2px 6px;
+              border-radius: 3px;
+              font-size: 10px;
+              font-weight: bold;
+              text-transform: uppercase;
+            }
+            .badge-present { background-color: #e6f4ea; color: #137333; }
+            .badge-absent { background-color: #fce8e6; color: #c5221f; }
+            .badge-late { background-color: #fef7e0; color: #b06000; }
+            .footer {
+              margin-top: 50px;
+              border-top: 1px solid #eee;
+              padding-top: 15px;
+              font-size: 11px;
+              color: #888;
+              text-align: center;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h1>${salonName}</h1>
+            <p><strong>Daily End-Of-Day (EOD) Report</strong> | Date: ${formattedDate} | Generated: ${new Date().toLocaleString("en-IN")}</p>
+          </div>
+
+          <!-- 1. SALES INVOICES -->
+          <div class="section">
+            <div class="section-title">1. Sales Invoices</div>
+            <table>
+              <thead>
+                <tr>
+                  <th>Invoice #</th>
+                  <th>Client</th>
+                  <th>Mobile</th>
+                  <th>Services / Products Enjoyed</th>
+                  <th class="text-right">Net Amount</th>
+                  <th class="text-right">GST Tax</th>
+                  <th class="text-right">Tips</th>
+                  <th class="text-right">Grand Total</th>
+                  <th>Payment</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${
+                  data.invoices.length > 0
+                    ? data.invoices
+                        .map((inv) => {
+                          const netAmt = Number(inv.subtotal || 0) - Number(inv.discount || 0);
+                          const itemsStr = (inv.invoice_items || [])
+                            .map((item) => `${item.service_name} (${item.staff_name || inv.staff_name || "Stylist"})`)
+                            .join(", ") || "—";
+                          return `
+                          <tr>
+                            <td class="bold">${inv.invoice_number}</td>
+                            <td>${inv.client_name || "—"}</td>
+                            <td>${inv.mobile || "—"}</td>
+                            <td>${itemsStr}</td>
+                            <td class="text-right">Rs ${netAmt.toLocaleString("en-IN")}</td>
+                            <td class="text-right">Rs ${Number(inv.tax || 0).toLocaleString("en-IN")}</td>
+                            <td class="text-right">Rs ${Number(inv.tip || 0).toLocaleString("en-IN")}</td>
+                            <td class="text-right bold">Rs ${Number(inv.total || 0).toLocaleString("en-IN")}</td>
+                            <td>${inv.payment_method || "—"}</td>
+                          </tr>
+                        `;
+                        })
+                        .join("")
+                    : `<tr><td colspan="9" class="text-center">No invoices recorded today.</td></tr>`
+                }
+                ${
+                  data.invoices.length > 0
+                    ? `
+                  <tr class="totals-row">
+                    <td colspan="4">Total</td>
+                    <td class="text-right">Rs ${data.totalNet.toLocaleString("en-IN")}</td>
+                    <td class="text-right">Rs ${data.totalGST.toLocaleString("en-IN")}</td>
+                    <td class="text-right">Rs ${data.totalTips.toLocaleString("en-IN")}</td>
+                    <td class="text-right">Rs ${data.totalGross.toLocaleString("en-IN")}</td>
+                    <td>—</td>
+                  </tr>
+                `
+                    : ""
+                }
+              </tbody>
+            </table>
+          </div>
+
+          <!-- 2. PAYMENT SUMMARY & INVENTORY ALERTS -->
+          <div style="display: flex; gap: 20px; page-break-inside: avoid;" class="section">
+            <div style="flex: 1;">
+              <div class="section-title">2. Payment Summary</div>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Payment Method</th>
+                    <th class="text-right">Total Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${
+                    Object.keys(data.paymentBreakdown).length > 0
+                      ? Object.entries(data.paymentBreakdown)
+                          .map(
+                            ([method, amt]) => `
+                          <tr>
+                            <td class="bold">${method}</td>
+                            <td class="text-right bold">Rs ${amt.toLocaleString("en-IN")}</td>
+                          </tr>
+                        `
+                          )
+                          .join("")
+                      : `<tr><td colspan="2" class="text-center">No payments.</td></tr>`
+                  }
+                </tbody>
+              </table>
+            </div>
+
+            <div style="flex: 1;">
+              <div class="section-title">3. Inventory Status</div>
+              <div class="summary-box">
+                <p><strong>Total Catalog Items:</strong> ${(inventory || []).length}</p>
+                <p><strong>Alert Status:</strong> ${
+                  data.lowStock.length > 0
+                    ? `<span style="color: #c5221f; font-weight: bold;">${data.lowStock.length} items low on stock</span>`
+                    : `<span style="color: #137333; font-weight: bold;">All products normal (No alerts)</span>`
+                }</p>
+                ${
+                  data.lowStock.length > 0
+                    ? `
+                  <div style="margin-top: 10px; font-size: 11px; max-height: 120px; overflow-y: auto; border-top: 1px solid #ddd; padding-top: 5px;">
+                    <strong>Low Stock Items:</strong>
+                    <ul style="margin: 5px 0; padding-left: 15px;">
+                      ${data.lowStock
+                        .map((item) => `<li>${item.name} (Qty: ${item.stock_qty} / Min: ${item.min_qty})</li>`)
+                        .join("")}
+                    </ul>
+                  </div>
+                `
+                    : ""
+                }
+              </div>
+            </div>
+          </div>
+
+          <!-- 4. STAFF SUMMARY -->
+          <div class="section" style="page-break-inside: avoid;">
+            <div class="section-title">4. Staff Contribution Summary</div>
+            <table>
+              <thead>
+                <tr>
+                  <th>Staff Name</th>
+                  <th class="text-center">Clients Served</th>
+                  <th class="text-right">Services Net</th>
+                  <th class="text-right">Products Net</th>
+                  <th class="text-right">Tips Received</th>
+                  <th class="text-right">Total Contribution</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${
+                  Object.keys(data.staffStats).length > 0
+                    ? Object.entries(data.staffStats)
+                        .map(([name, stats]) => `
+                        <tr>
+                          <td class="bold">${name}</td>
+                          <td class="text-center">${stats.clients.size}</td>
+                          <td class="text-right">Rs ${stats.netServices.toLocaleString("en-IN")}</td>
+                          <td class="text-right">Rs ${stats.products.toLocaleString("en-IN")}</td>
+                          <td class="text-right">Rs ${stats.tips.toLocaleString("en-IN")}</td>
+                          <td class="text-right bold">Rs ${stats.total.toLocaleString("en-IN")}</td>
+                        </tr>
+                      `)
+                        .join("")
+                    : `<tr><td colspan="6" class="text-center">No staff activity logged today.</td></tr>`
+                }
+              </tbody>
+            </table>
+          </div>
+
+          <!-- 5. STAFF ATTENDANCE & CASH REGISTER -->
+          <div style="display: flex; gap: 20px; page-break-inside: avoid;" class="section">
+            <div style="flex: 1.2;">
+              <div class="section-title">5. Staff Attendance</div>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Staff Name</th>
+                    <th>Status</th>
+                    <th>Check In</th>
+                    <th>Check Out</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${
+                    data.attendance.length > 0
+                      ? data.attendance
+                          .map((att) => {
+                            const staffMember = staff.find((s) => s.id === att.staff_id);
+                            const name = staffMember?.name || "Staff";
+                            const statusClass = `badge badge-${att.status}`;
+                            return `
+                            <tr>
+                              <td class="bold">${name}</td>
+                              <td><span class="${statusClass}">${att.status?.toUpperCase()}</span></td>
+                              <td>${att.check_in ? format12HourTime(att.check_in) : "—"}</td>
+                              <td>${att.check_out ? format12HourTime(att.check_out) : "—"}</td>
+                            </tr>
+                          `;
+                          })
+                          .join("")
+                      : `<tr><td colspan="4" class="text-center">No attendance logs.</td></tr>`
+                  }
+                </tbody>
+              </table>
+            </div>
+
+            <div style="flex: 0.8;">
+              <div class="section-title">6. Cash Register</div>
+              <div class="summary-box" style="margin-top: 10px;">
+                ${
+                  data.register
+                    ? `
+                  <table style="width: 100%; border: none;">
+                    <tr><td class="bold">Opening Cash:</td><td class="text-right">Rs ${Number(data.register.opening_cash || 0).toLocaleString("en-IN")}</td></tr>
+                    <tr><td class="bold">Expenses:</td><td class="text-right" style="color: #c5221f;">Rs ${Number(data.register.expenses || 0).toLocaleString("en-IN")}</td></tr>
+                    ${data.register.expense_notes ? `<tr><td colspan="2" style="font-size: 10px; color: #666; font-style: italic;">Notes: ${data.register.expense_notes}</td></tr>` : ""}
+                    <tr style="border-top: 1px solid #ddd;"><td class="bold">Closing Cash:</td><td class="text-right bold">Rs ${Number(data.register.closing_cash || 0).toLocaleString("en-IN")}</td></tr>
+                    <tr><td class="bold">Register Status:</td><td class="text-right"><span class="badge" style="background-color: ${data.register.status === "closed" ? "#e6f4ea" : "#fef7e0"}; color: ${data.register.status === "closed" ? "#137333" : "#b06000"};">${data.register.status?.toUpperCase()}</span></td></tr>
+                  </table>
+                `
+                    : `<p class="text-center" style="margin: 20px 0; color: #888;">No cash register logged for this date.</p>`
+                }
+              </div>
+            </div>
+          </div>
+
+          <div class="footer">
+            <p>Report automatically generated by Essensuals Salon POS Admin Panel. All figures in INR (Rs).</p>
+          </div>
+
+          <script>
+            window.onload = function() {
+              window.print();
+            };
+          </script>
+        </body>
+      </html>
+    `;
+    printWindow.document.write(html);
+    printWindow.document.close();
+  };
+
+  const handleExportExcel = () => {
+    const data = getEodReportData(emailReportDate);
+    if (!data.invoices.length && !data.attendance.length && !data.register) {
+      toast.error("No EOD data recorded on this date to export.");
+      return;
+    }
+
+    const salonName = settings?.name || "Toni & Guy Essensuals Gorantla";
+    let csvLines = [];
+
+    csvLines.push(`"${salonName.toUpperCase()} - DAILY EOD REPORT"`);
+    csvLines.push(`"Report Date","${emailReportDate}"`);
+    csvLines.push(`"Generated At","${new Date().toLocaleString("en-IN")}"`);
+    csvLines.push("");
+
+    csvLines.push(`"1. SALES INVOICES"`);
+    csvLines.push(`"Invoice #","Client Name","Mobile","Services & Products","Net Amount (Rs)","GST Tax (Rs)","Tips (Rs)","Grand Total (Rs)","Payment Method"`);
+    
+    if (data.invoices.length > 0) {
+      data.invoices.forEach(inv => {
+        const netAmt = Number(inv.subtotal || 0) - Number(inv.discount || 0);
+        const itemsStr = (inv.invoice_items || [])
+          .map((item) => `${item.service_name} (${item.staff_name || inv.staff_name || "Stylist"})`)
+          .join(", ") || "—";
+        csvLines.push(
+          `"${inv.invoice_number}","${inv.client_name || ""}","${inv.mobile || ""}","${itemsStr.replace(/"/g, '""')}","${netAmt}","${inv.tax || 0}","${inv.tip || 0}","${inv.total}","${inv.payment_method || ""}"`
+        );
+      });
+      csvLines.push(`"TOTAL","","","","${data.totalNet}","${data.totalGST}","${data.totalTips}","${data.totalGross}",""`);
+    } else {
+      csvLines.push(`"No invoices recorded today."`);
+    }
+    csvLines.push("");
+
+    csvLines.push(`"2. PAYMENT SUMMARY"`);
+    csvLines.push(`"Payment Method","Total Amount (Rs)"`);
+    if (Object.keys(data.paymentBreakdown).length > 0) {
+      Object.entries(data.paymentBreakdown).forEach(([method, amt]) => {
+        csvLines.push(`"${method}","${amt}"`);
+      });
+    } else {
+      csvLines.push(`"No payments."`);
+    }
+    csvLines.push("");
+
+    csvLines.push(`"3. STAFF CONTRIBUTION"`);
+    csvLines.push(`"Staff Name","Clients Served","Services Net (Rs)","Products Net (Rs)","Tips Received (Rs)","Total Contribution (Rs)"`);
+    if (Object.keys(data.staffStats).length > 0) {
+      Object.entries(data.staffStats).forEach(([name, stats]) => {
+        csvLines.push(`"${name}","${stats.clients.size}","${stats.netServices}","${stats.products}","${stats.tips}","${stats.total}"`);
+      });
+    } else {
+      csvLines.push(`"No staff activity."`);
+    }
+    csvLines.push("");
+
+    csvLines.push(`"4. STAFF ATTENDANCE"`);
+    csvLines.push(`"Staff Name","Status","Check In","Check Out"`);
+    if (data.attendance.length > 0) {
+      data.attendance.forEach(att => {
+        const staffMember = staff.find((s) => s.id === att.staff_id);
+        const name = staffMember?.name || "Staff";
+        csvLines.push(`"${name}","${att.status?.toUpperCase()}","${att.check_in ? format12HourTime(att.check_in) : ""}","${att.check_out ? format12HourTime(att.check_out) : ""}"`);
+      });
+    } else {
+      csvLines.push(`"No attendance logged."`);
+    }
+    csvLines.push("");
+
+    csvLines.push(`"5. CASH REGISTER"`);
+    if (data.register) {
+      csvLines.push(`"Opening Cash","Rs ${data.register.opening_cash || 0}"`);
+      csvLines.push(`"Expenses","Rs ${data.register.expenses || 0}"`);
+      csvLines.push(`"Expense Notes","${(data.register.expense_notes || "").replace(/"/g, '""')}"`);
+      csvLines.push(`"Closing Cash","Rs ${data.register.closing_cash || 0}"`);
+      csvLines.push(`"Register Status","${data.register.status?.toUpperCase()}"`);
+    } else {
+      csvLines.push(`"No cash register logged for this date."`);
+    }
+    csvLines.push("");
+
+    csvLines.push(`"6. INVENTORY STATUS"`);
+    csvLines.push(`"Total Catalog Items","${(inventory || []).length}"`);
+    if (data.lowStock.length > 0) {
+      csvLines.push(`"Alerts","${data.lowStock.length} items low on stock"`);
+      csvLines.push(`"Item Name","Current Stock","Min Stock Required"`);
+      data.lowStock.forEach(item => {
+        csvLines.push(`"${item.name}","${item.stock_qty}","${item.min_qty}"`);
+      });
+    } else {
+      csvLines.push(`"Alerts","All products normal (No alerts)"`);
+    }
+
+    const csvContent = "data:text/csv;charset=utf-8,\uFEFF" + csvLines.join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `EOD_Report_${emailReportDate}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    toast.success("EOD Excel Report (CSV) downloaded successfully!");
+  };
 
   // Filter invoices based on date range
   const filteredInvoices = useMemo(() => {
@@ -304,21 +844,57 @@ export default function ReportsManager() {
                 <input type="date" className="form-input" value={emailReportDate} onChange={e => setEmailReportDate(e.target.value)} />
               </div>
               <div className="form-group" style={{ flex: 1 }}>
+                <label className="form-label">Report Format</label>
+                <select className="form-input" value={reportFormat} onChange={e => setReportFormat(e.target.value)}>
+                  <option value="text">Text (WhatsApp/Email)</option>
+                  <option value="pdf">PDF Document (Download/Print)</option>
+                  <option value="excel">Excel Spreadsheet (Download)</option>
+                  <option value="both">Both PDF & Excel</option>
+                </select>
+              </div>
+              <div className="form-group" style={{ flex: 1 }}>
                 <label className="form-label">Recipient Email Address</label>
-                <input type="email" className="form-input" placeholder="admin@example.com" value={emailRecipient} onChange={e => setEmailRecipient(e.target.value)} />
+                <input 
+                  type="email" 
+                  className="form-input" 
+                  placeholder="admin@example.com" 
+                  value={emailRecipient} 
+                  onChange={e => setEmailRecipient(e.target.value)} 
+                  disabled={reportFormat !== "text"}
+                  style={{ opacity: reportFormat !== "text" ? 0.5 : 1 }}
+                />
               </div>
             </div>
 
             <div style={{ display: "flex", gap: "1rem" }}>
-              <button className="btn-add" onClick={handleSendEmailReport} disabled={sendingEmail} style={{ flex: 1, padding: "0.75rem", background: "transparent", border: "1px solid #c9b99a", color: "#c9b99a" }}>
-                {sendingEmail ? "Preparing Email..." : "Send EOD Email"}
-              </button>
-              <button className="btn-add" onClick={handleSendWhatsappReport} disabled={sendingWhatsapp} style={{ flex: 1, padding: "0.75rem", background: "transparent", border: "1px solid #c9b99a", color: "#c9b99a" }}>
-                {sendingWhatsapp ? "Opening WhatsApp..." : "Send EOD WhatsApp"}
-              </button>
-              <button className="btn-add" onClick={handleSendBothReports} disabled={sendingEmail || sendingWhatsapp} style={{ flex: 1, padding: "0.75rem" }}>
-                Send to Both Channels
-              </button>
+              {reportFormat === "text" && (
+                <>
+                  <button className="btn-add" onClick={handleSendEmailReport} disabled={sendingEmail} style={{ flex: 1, padding: "0.75rem", background: "transparent", border: "1px solid #c9b99a", color: "#c9b99a" }}>
+                    {sendingEmail ? "Preparing Email..." : "Send EOD Email"}
+                  </button>
+                  <button className="btn-add" onClick={handleSendWhatsappReport} disabled={sendingWhatsapp} style={{ flex: 1, padding: "0.75rem", background: "transparent", border: "1px solid #c9b99a", color: "#c9b99a" }}>
+                    {sendingWhatsapp ? "Opening WhatsApp..." : "Send EOD WhatsApp"}
+                  </button>
+                  <button className="btn-add" onClick={handleSendBothReports} disabled={sendingEmail || sendingWhatsapp} style={{ flex: 1, padding: "0.75rem" }}>
+                    Send to Both Channels
+                  </button>
+                </>
+              )}
+              {reportFormat === "pdf" && (
+                <button className="btn-add" onClick={handleExportPDF} style={{ flex: 1, padding: "0.75rem" }}>
+                  Generate & Print PDF
+                </button>
+              )}
+              {reportFormat === "excel" && (
+                <button className="btn-add" onClick={handleExportExcel} style={{ flex: 1, padding: "0.75rem" }}>
+                  Export Excel Spreadsheet (CSV)
+                </button>
+              )}
+              {reportFormat === "both" && (
+                <button className="btn-add" onClick={() => { handleExportPDF(); handleExportExcel(); }} style={{ flex: 1, padding: "0.75rem" }}>
+                  Generate PDF & Export Excel
+                </button>
+              )}
             </div>
           </div>
         </div>
