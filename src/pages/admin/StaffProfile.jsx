@@ -42,7 +42,7 @@ export default function StaffProfile() {
       }
       (inv.invoice_items || []).forEach(item => {
         const staffMatch = item.staff_name === member.name || (!item.staff_name && inv.staff_name === member.name);
-        if (staffMatch) {
+        if (staffMatch && item.item_type !== "membership") {
           netSales += Number(item.total || 0);
           servicesCount += Number(item.quantity || 1);
           clientSet.add(inv.customer_id || inv.mobile);
@@ -68,7 +68,7 @@ export default function StaffProfile() {
     invoicesForStaff.forEach(inv => {
       (inv.invoice_items || []).forEach(item => {
         const staffMatch = item.staff_name === member.name || (!item.staff_name && inv.staff_name === member.name);
-        if (staffMatch) {
+        if (staffMatch && item.item_type !== "membership") {
           svcMap[item.service_name] = (svcMap[item.service_name] || 0) + Number(item.quantity || 1);
         }
       });
@@ -85,7 +85,7 @@ export default function StaffProfile() {
       if (!month) return;
       (inv.invoice_items || []).forEach(item => {
         const staffMatch = item.staff_name === member.name || (!item.staff_name && inv.staff_name === member.name);
-        if (staffMatch) byMonth[month] = (byMonth[month] || 0) + Number(item.total || 0);
+        if (staffMatch && item.item_type !== "membership") byMonth[month] = (byMonth[month] || 0) + Number(item.total || 0);
       });
     });
     const monthlyTrend = Object.entries(byMonth)

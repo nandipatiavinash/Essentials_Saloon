@@ -72,6 +72,10 @@ export default function ReportsManager() {
         const itemType = item.item_type || "service";
         const itemVal = Number(item.quantity || 1) * Number(item.price || 0);
 
+        if (itemType === "membership") {
+          return;
+        }
+
         if (!staffStats[itemStaff]) {
           staffStats[itemStaff] = { clients: new Set(), netServices: 0, products: 0, tips: 0, total: 0 };
         }

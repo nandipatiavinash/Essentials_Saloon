@@ -249,6 +249,7 @@ export default function AttendanceManager() {
         }
         
         (inv.invoice_items || []).forEach(item => {
+          if (item.item_type === "membership") return;
           const itemStaff = item.staff_name || inv.staff_name;
           if (itemStaff === member.name) {
             servicesCount += Number(item.quantity || 1);

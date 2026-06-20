@@ -545,7 +545,7 @@ export default function BillingPOS() {
                               item_type: "membership",
                               service_name: "Membership Signup",
                               quantity: 1,
-                              price: 1000,
+                              price: 100,
                               staff_name: current.staff_name || "",
                             }
                           ];
