@@ -40,6 +40,8 @@ export default function ReportsManager() {
 
     const paymentBreakdown = {};
     const staffStats = {};
+    const serviceBreakdown = {};
+    const productBreakdown = {};
 
     dayInvoices.forEach((inv) => {
       const netAmt = Number(inv.subtotal || 0) - Number(inv.discount || 0);
@@ -70,10 +72,25 @@ export default function ReportsManager() {
       (inv.invoice_items || []).forEach((item) => {
         const itemStaff = item.staff_name || inv.staff_name || "Unknown Stylist";
         const itemType = item.item_type || "service";
-        const itemVal = Number(item.quantity || 1) * Number(item.price || 0);
+        const qty = Number(item.quantity || 1);
+        const itemVal = qty * Number(item.price || 0);
 
         if (itemType === "membership") {
           return;
+        }
+
+        if (itemType === "product") {
+          if (!productBreakdown[item.service_name]) {
+            productBreakdown[item.service_name] = { name: item.service_name, qty: 0, total: 0 };
+          }
+          productBreakdown[item.service_name].qty += qty;
+          productBreakdown[item.service_name].total += itemVal;
+        } else {
+          if (!serviceBreakdown[item.service_name]) {
+            serviceBreakdown[item.service_name] = { name: item.service_name, qty: 0, total: 0 };
+          }
+          serviceBreakdown[item.service_name].qty += qty;
+          serviceBreakdown[item.service_name].total += itemVal;
         }
 
         if (!staffStats[itemStaff]) {
@@ -109,7 +126,9 @@ export default function ReportsManager() {
       totalTips,
       totalGross,
       paymentBreakdown,
-      staffStats
+      staffStats,
+      serviceBreakdown,
+      productBreakdown
     };
   };
 
@@ -243,8 +262,15 @@ export default function ReportsManager() {
         </head>
         <body>
           <div class="header">
-            <h1>${salonName}</h1>
-            <p><strong>Daily End-Of-Day (EOD) Report</strong> | Date: ${formattedDate} | Generated: ${new Date().toLocaleString("en-IN")}</p>
+            <div style="text-align: center; margin-bottom: 20px;">
+              <h1 style="font-size: 32px; font-weight: 800; letter-spacing: 4px; margin: 0; color: #000; font-family: 'Montserrat', sans-serif;">TONI & GUY</h1>
+              <h3 style="font-size: 14px; font-weight: 400; letter-spacing: 6px; margin: 5px 0 0 0; color: #c9b99a; font-family: 'Montserrat', sans-serif; text-transform: uppercase;">Essensuals Gorantla</h3>
+              <div style="width: 80px; height: 2px; background: #c9b99a; margin: 15px auto 0 auto;"></div>
+            </div>
+            <p style="text-align: center; margin: 15px 0 0 0; color: #666; font-size: 13px; font-family: sans-serif;">
+              <strong>DAILY END-OF-DAY (EOD) REPORT</strong><br/>
+              Date: ${formattedDate} &nbsp;|&nbsp; Generated: ${new Date().toLocaleString("en-IN")}
+            </p>
           </div>
 
           <!-- 1. SALES INVOICES -->
@@ -308,10 +334,71 @@ export default function ReportsManager() {
             </table>
           </div>
 
-          <!-- 2. PAYMENT SUMMARY & INVENTORY ALERTS -->
+          <!-- 2 & 3. SERVICES & PRODUCTS RENDERED SUMMARY -->
+          <div style="display: flex; gap: 20px; page-break-inside: avoid;" class="section">
+            <div style="flex: 1.2;">
+              <div class="section-title">2. Services Rendered Summary</div>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Service Name</th>
+                    <th class="text-center" style="width: 80px;">Qty</th>
+                    <th class="text-right" style="width: 120px;">Total Revenue</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${
+                    Object.keys(data.serviceBreakdown).length > 0
+                      ? Object.values(data.serviceBreakdown)
+                          .sort((a, b) => b.total - a.total)
+                          .map((item) => `
+                            <tr>
+                              <td class="bold">${item.name}</td>
+                              <td class="text-center">${item.qty}</td>
+                              <td class="text-right bold">Rs ${item.total.toLocaleString("en-IN")}</td>
+                            </tr>
+                          `)
+                          .join("")
+                      : `<tr><td colspan="3" class="text-center">No services performed today.</td></tr>`
+                  }
+                </tbody>
+              </table>
+            </div>
+
+            <div style="flex: 0.8;">
+              <div class="section-title">3. Products Sold Summary</div>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Product Name</th>
+                    <th class="text-center" style="width: 60px;">Qty</th>
+                    <th class="text-right" style="width: 100px;">Total Sales</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${
+                    Object.keys(data.productBreakdown).length > 0
+                      ? Object.values(data.productBreakdown)
+                          .sort((a, b) => b.total - a.total)
+                          .map((item) => `
+                            <tr>
+                              <td class="bold">${item.name}</td>
+                              <td class="text-center">${item.qty}</td>
+                              <td class="text-right bold">Rs ${item.total.toLocaleString("en-IN")}</td>
+                            </tr>
+                          `)
+                          .join("")
+                      : `<tr><td colspan="3" class="text-center">No products sold today.</td></tr>`
+                  }
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- 4 & 5. PAYMENT SUMMARY & INVENTORY ALERTS -->
           <div style="display: flex; gap: 20px; page-break-inside: avoid;" class="section">
             <div style="flex: 1;">
-              <div class="section-title">2. Payment Summary</div>
+              <div class="section-title">4. Payment Summary</div>
               <table>
                 <thead>
                   <tr>
@@ -339,7 +426,7 @@ export default function ReportsManager() {
             </div>
 
             <div style="flex: 1;">
-              <div class="section-title">3. Inventory Status</div>
+              <div class="section-title">5. Inventory Status</div>
               <div class="summary-box">
                 <p><strong>Total Catalog Items:</strong> ${(inventory || []).length}</p>
                 <p><strong>Alert Status:</strong> ${
@@ -365,9 +452,9 @@ export default function ReportsManager() {
             </div>
           </div>
 
-          <!-- 4. STAFF SUMMARY -->
+          <!-- 6. STAFF SUMMARY -->
           <div class="section" style="page-break-inside: avoid;">
-            <div class="section-title">4. Staff Contribution Summary</div>
+            <div class="section-title">6. Staff Contribution Summary</div>
             <table>
               <thead>
                 <tr>
@@ -400,10 +487,10 @@ export default function ReportsManager() {
             </table>
           </div>
 
-          <!-- 5. STAFF ATTENDANCE & CASH REGISTER -->
+          <!-- 7 & 8. STAFF ATTENDANCE & CASH REGISTER -->
           <div style="display: flex; gap: 20px; page-break-inside: avoid;" class="section">
             <div style="flex: 1.2;">
-              <div class="section-title">5. Staff Attendance</div>
+              <div class="section-title">7. Staff Attendance</div>
               <table>
                 <thead>
                   <tr>
@@ -438,7 +525,7 @@ export default function ReportsManager() {
             </div>
 
             <div style="flex: 0.8;">
-              <div class="section-title">6. Cash Register</div>
+              <div class="section-title">8. Cash Register</div>
               <div class="summary-box" style="margin-top: 10px;">
                 ${
                   data.register
