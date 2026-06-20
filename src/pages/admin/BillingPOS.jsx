@@ -919,7 +919,7 @@ export default function BillingPOS() {
                   )}
                   <div className="grand" style={{ borderTop: "1px solid var(--a-border)", paddingTop: "0.5rem", marginTop: "0.2rem", fontSize: "0.95rem", display: "flex", justifyContent: "space-between" }}>
                     <span style={{ fontWeight: "bold" }}>Grand Total</span>
-                    <strong style={{ color: "#c9b99a" }}>Rs {Number(viewInvoiceData.invoice.total).toLocaleString("en-IN")}</strong>
+                    <strong style={{ color: "var(--a-text)" }}>Rs {Number(viewInvoiceData.invoice.total).toLocaleString("en-IN")}</strong>
                   </div>
                 </div>
               </div>

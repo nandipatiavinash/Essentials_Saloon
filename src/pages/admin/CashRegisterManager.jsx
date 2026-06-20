@@ -307,8 +307,8 @@ Toni & Guy Essensuals Gorantla, Guntur
                   <div style={{ fontSize: "1.2rem", fontWeight: "bold", color: "#b71c1c" }}>- Rs {Number(activeRegister.expenses || 0).toLocaleString("en-IN")}</div>
                 </div>
                 <div style={{ border: "1px solid #e8e8e4", padding: "1rem", background: "rgba(201,185,154,0.05)" }}>
-                  <div style={{ fontSize: "0.58rem", textTransform: "uppercase", color: "#c9b99a", letterSpacing: "0.1em", fontWeight: "600" }}>Expected Cash In Register</div>
-                  <div style={{ fontSize: "1.2rem", fontWeight: "bold", color: "#c9b99a" }}>Rs {expectedCash.toLocaleString("en-IN")}</div>
+                  <div style={{ fontSize: "0.58rem", textTransform: "uppercase", color: "var(--a-muted)", letterSpacing: "0.1em", fontWeight: "600" }}>Expected Cash In Register</div>
+                  <div style={{ fontSize: "1.2rem", fontWeight: "bold", color: "var(--a-text)" }}>Rs {expectedCash.toLocaleString("en-IN")}</div>
                 </div>
               </div>
 
@@ -418,7 +418,7 @@ Toni & Guy Essensuals Gorantla, Guntur
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.72rem", borderTop: "1px double #ccc", paddingTop: "0.5rem" }}>
                 <span style={{ fontWeight: "bold" }}>Total Revenue ({salesForDate.count} bills)</span>
-                <strong style={{ fontSize: "0.85rem", color: "#c9b99a" }}>Rs {salesForDate.revenue.toLocaleString("en-IN")}</strong>
+                <strong style={{ fontSize: "0.85rem", color: "var(--a-text)" }}>Rs {salesForDate.revenue.toLocaleString("en-IN")}</strong>
               </div>
             </div>
 

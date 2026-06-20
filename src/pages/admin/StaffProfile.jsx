@@ -141,7 +141,7 @@ export default function StaffProfile() {
       <div className="stats-grid">
         <div className="stat-card">
           <div className="stat-label">Total Net Sales</div>
-          <div className="stat-value" style={{ color: "#c9b99a" }}>Rs {(kpis.netSales || 0).toLocaleString("en-IN")}</div>
+          <div className="stat-value" style={{ color: "var(--a-text)" }}>Rs {(kpis.netSales || 0).toLocaleString("en-IN")}</div>
           <div className="stat-sub">All time revenue generated</div>
         </div>
         <div className="stat-card">
@@ -156,7 +156,7 @@ export default function StaffProfile() {
         </div>
         <div className="stat-card">
           <div className="stat-label">Tips Earned</div>
-          <div className="stat-value" style={{ color: "#c9b99a" }}>Rs {(kpis.tipsEarned || 0).toLocaleString("en-IN")}</div>
+          <div className="stat-value" style={{ color: "var(--a-text)" }}>Rs {(kpis.tipsEarned || 0).toLocaleString("en-IN")}</div>
           <div className="stat-sub">Total tips received</div>
         </div>
         <div className="stat-card">
@@ -204,7 +204,7 @@ export default function StaffProfile() {
               <div key={m.month} style={{ marginBottom: "0.75rem" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.68rem", marginBottom: "0.2rem" }}>
                   <span style={{ color: "var(--a-muted)" }}>{m.month}</span>
-                  <span style={{ fontWeight: 600, color: "#c9b99a" }}>Rs {m.total.toLocaleString("en-IN")}</span>
+                  <span style={{ fontWeight: 600, color: "var(--a-text)" }}>Rs {m.total.toLocaleString("en-IN")}</span>
                 </div>
                 <div style={{ height: "6px", background: "rgba(255,255,255,0.04)", borderRadius: "2px", overflow: "hidden" }}>
                   <div style={{ height: "100%", width: `${Math.round((m.total / maxMonthly) * 100)}%`, background: "linear-gradient(90deg, #c9b99a, #e8d5b5)", borderRadius: "2px", transition: "width 0.5s ease" }} />
@@ -254,10 +254,10 @@ export default function StaffProfile() {
                       : (inv.invoice_items || []).map(item => item.service_name).join(", ") || "—"}
                   </td>
                   <td style={{ textAlign: "right", fontSize: "0.78rem" }}>Rs {netAmt.toLocaleString("en-IN")}</td>
-                  <td style={{ textAlign: "right", fontSize: "0.78rem", color: inv.tip > 0 ? "#c9b99a" : "inherit" }}>
+                  <td style={{ textAlign: "right", fontSize: "0.78rem", color: inv.tip > 0 ? "var(--a-text)" : "inherit" }}>
                     Rs {Number(inv.tip || 0).toLocaleString("en-IN")}
                   </td>
-                  <td style={{ textAlign: "right", fontWeight: "bold", color: "#c9b99a", fontSize: "0.82rem" }}>
+                  <td style={{ textAlign: "right", fontWeight: "bold", color: "var(--a-text)", fontSize: "0.82rem" }}>
                     Rs {Number(inv.total || 0).toLocaleString("en-IN")}
                   </td>
                 </tr>
@@ -321,7 +321,7 @@ export default function StaffProfile() {
                     {log.check_out && log.status !== "absent" && log.status !== "leave"
                       ? format12HourTime(log.check_out) : "—"}
                   </td>
-                  <td style={{ fontSize: "0.78rem", color: "#c9b99a" }}>{hours}</td>
+                  <td style={{ fontSize: "0.78rem", color: "var(--a-text)" }}>{hours}</td>
                   <td style={{ fontSize: "0.7rem", color: "var(--a-muted)" }}>{log.notes || "—"}</td>
                 </tr>
               );

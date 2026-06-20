@@ -878,22 +878,22 @@ export default function ReportsManager() {
         <div className="stats-grid" style={{ padding: "1.5rem", background: "rgba(255,255,255,0.01)", borderTop: "1px solid rgba(255,255,255,0.04)" }}>
           <div className="stat-card">
             <div className="stat-label">Net Sales (Subtotal)</div>
-            <div className="stat-value" style={{ color: "#fff" }}>Rs {totals.net.toLocaleString("en-IN")}</div>
+            <div className="stat-value" style={{ color: "var(--a-text)" }}>Rs {totals.net.toLocaleString("en-IN")}</div>
             <div className="stat-sub">Before GST and Tips</div>
           </div>
           <div className="stat-card">
             <div className="stat-label">GST Collected</div>
-            <div className="stat-value" style={{ color: "#c9b99a" }}>Rs {totals.gst.toLocaleString("en-IN")}</div>
+            <div className="stat-value" style={{ color: "var(--a-text)" }}>Rs {totals.gst.toLocaleString("en-IN")}</div>
             <div className="stat-sub">GST tax component</div>
           </div>
           <div className="stat-card">
             <div className="stat-label">Tips Received</div>
-            <div className="stat-value" style={{ color: "#c9b99a" }}>Rs {totals.tips.toLocaleString("en-IN")}</div>
+            <div className="stat-value" style={{ color: "var(--a-text)" }}>Rs {totals.tips.toLocaleString("en-IN")}</div>
             <div className="stat-sub">Stylist tip distributions</div>
           </div>
           <div className="stat-card">
             <div className="stat-label">Gross Revenue</div>
-            <div className="stat-value" style={{ color: "#c9b99a", fontWeight: "bold" }}>Rs {totals.gross.toLocaleString("en-IN")}</div>
+            <div className="stat-value" style={{ color: "var(--a-text)", fontWeight: "bold" }}>Rs {totals.gross.toLocaleString("en-IN")}</div>
             <div className="stat-sub">Total amount collected</div>
           </div>
         </div>
@@ -935,8 +935,8 @@ export default function ReportsManager() {
                   </td>
                   <td style={{ textAlign: "right" }}>Rs {netAmt.toLocaleString("en-IN")}</td>
                   <td style={{ textAlign: "right" }}>Rs {Number(inv.tax || 0).toLocaleString("en-IN")}</td>
-                  <td style={{ textAlign: "right", color: inv.tip > 0 ? "#c9b99a" : "inherit" }}>Rs {Number(inv.tip || 0).toLocaleString("en-IN")}</td>
-                  <td style={{ textAlign: "right", fontWeight: "bold", color: "#c9b99a" }}>Rs {Number(inv.total || 0).toLocaleString("en-IN")}</td>
+                  <td style={{ textAlign: "right", color: inv.tip > 0 ? "var(--a-text)" : "inherit" }}>Rs {Number(inv.tip || 0).toLocaleString("en-IN")}</td>
+                  <td style={{ textAlign: "right", fontWeight: "bold", color: "var(--a-text)" }}>Rs {Number(inv.total || 0).toLocaleString("en-IN")}</td>
                 </tr>
               );
             })}

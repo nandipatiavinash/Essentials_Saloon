@@ -135,7 +135,7 @@ export default function BookingsManager() {
                 </td>
                 <td>
                   {b.follow_up_date && (
-                    <div style={{ fontSize: "0.7rem", fontWeight: "600", color: "#c9b99a" }}>
+                    <div style={{ fontSize: "0.7rem", fontWeight: "600", color: "var(--a-text)" }}>
                       Next: {formatDate(b.follow_up_date)}
                     </div>
                   )}

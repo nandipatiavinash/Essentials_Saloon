@@ -142,7 +142,7 @@ export default function Dashboard() {
           </div>
           <div style={{ padding: "1.25rem 1.5rem" }}>
             <div style={{ fontSize: "0.65rem", textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--a-muted)", marginBottom: "0.4rem" }}>Stock Valuation</div>
-            <div style={{ fontSize: "1.6rem", fontWeight: 700, color: "#c9b99a" }}>Rs {inventoryValue.toLocaleString("en-IN")}</div>
+            <div style={{ fontSize: "1.6rem", fontWeight: 700, color: "var(--a-text)" }}>Rs {inventoryValue.toLocaleString("en-IN")}</div>
             <div style={{ fontSize: "0.65rem", color: "var(--a-muted)" }}>Current cost value</div>
           </div>
         </div>

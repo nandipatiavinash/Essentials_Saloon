@@ -188,7 +188,7 @@ export default function AnalyticsDashboard() {
             <div className="modal-body" style={{ maxHeight: "450px", overflowY: "auto" }}>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "1rem", gap: "1rem" }}>
                 <div style={{ fontSize: "0.8rem" }}>
-                  Total Invoices: <strong>{selectedDateInvoices.length}</strong> | Total Sales: <strong style={{ color: "#c9b99a" }}>Rs {selectedDateInvoices.reduce((sum, inv) => sum + Number(inv.total), 0).toLocaleString("en-IN")}</strong>
+                  Total Invoices: <strong>{selectedDateInvoices.length}</strong> | Total Sales: <strong style={{ color: "var(--a-text)" }}>Rs {selectedDateInvoices.reduce((sum, inv) => sum + Number(inv.total), 0).toLocaleString("en-IN")}</strong>
                 </div>
                 <div style={{ display: "flex", gap: "0.5rem" }}>
                   <button className="tbl-btn" onClick={exportCSV}>Export CSV</button>
@@ -221,7 +221,7 @@ export default function AnalyticsDashboard() {
                           ) : "—"}
                         </td>
                         <td style={{ padding: "8px" }}>{inv.payment_method}</td>
-                        <td style={{ padding: "8px", textAlign: "right", fontWeight: "bold", color: "#c9b99a" }}>
+                        <td style={{ padding: "8px", textAlign: "right", fontWeight: "bold", color: "var(--a-text)" }}>
                           Rs {Number(inv.total).toLocaleString("en-IN")}
                         </td>
                       </tr>

@@ -517,7 +517,7 @@ export default function AttendanceManager() {
                   </td>
                   <td style={{ textAlign: "center", fontWeight: 600 }}>{p.servicesCount}</td>
                   <td style={{ textAlign: "center" }}>{p.customersCount}</td>
-                  <td style={{ textAlign: "right", fontWeight: "bold", color: "#c9b99a" }}>
+                  <td style={{ textAlign: "right", fontWeight: "bold", color: "var(--a-text)" }}>
                     Rs {p.tipsEarned.toLocaleString("en-IN")}
                   </td>
                 </tr>
