@@ -41,20 +41,21 @@ export default function BillingPOS() {
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [attemptedSubmit, setAttemptedSubmit] = useState(false);
   const [addTab, setAddTab] = useState("services");
+  const [viewInvoiceData, setViewInvoiceData] = useState(null);
 
 
   const activeServices = useMemo(() => (services || []).filter((svc) => svc.active), [services]);
   const activeInventory = useMemo(() => (inventory || []).filter(item => Number(item.stock_qty) > 0), [inventory]);
   const totals = useMemo(() => calculateInvoiceTotals(bill), [bill]);
 
-  // Use a ref so editInvoice (defined below) can be called from useEffect without hoisting issues
-  const editInvoiceRef = useRef(null);
+  // Use a ref so handleViewInvoice (defined below) can be called from useEffect without hoisting issues
+  const handleViewInvoiceRef = useRef(null);
 
   useEffect(() => {
     loadHistory();
-    // If ?inv=ID is in URL (from ClientsManager), load that invoice after mount
+    // If ?inv=ID is in URL (from ClientsManager), view that invoice after mount
     const invId = searchParams.get("inv");
-    if (invId && editInvoiceRef.current) editInvoiceRef.current(invId);
+    if (invId && handleViewInvoiceRef.current) handleViewInvoiceRef.current(invId);
   }, []);
 
   const loadHistory = async (term = "") => {
@@ -222,41 +223,177 @@ export default function BillingPOS() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const editInvoice = async (id) => {
+  const handlePrintThermal = (invoiceData, itemsData) => {
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) {
+      toast.error("Failed to open print window. Please allow popups.");
+      return;
+    }
+
+    const salonName = settings?.name || "Toni & Guy Essensuals";
+    const logoSub = "Gorantla, Guntur";
+    const phone = "+91 91002 92525";
+
+    const html = `
+      <html>
+        <head>
+          <title>Receipt - ${invoiceData.invoice_number}</title>
+          <style>
+            @page {
+              size: 80mm auto;
+              margin: 0;
+            }
+            body {
+              width: 70mm;
+              margin: 0 auto;
+              padding: 5mm 0;
+              font-family: 'Courier New', Courier, monospace;
+              font-size: 11px;
+              color: #000;
+              line-height: 1.3;
+            }
+            .text-center { text-align: center; }
+            .text-right { text-align: right; }
+            .bold { font-weight: bold; }
+            .divider {
+              border-top: 1px dashed #000;
+              margin: 8px 0;
+            }
+            .header-title {
+              font-size: 14px;
+              font-weight: bold;
+              margin-bottom: 2px;
+              text-transform: uppercase;
+            }
+            .header-sub {
+              font-size: 10px;
+              margin-bottom: 4px;
+            }
+            .meta-table, .items-table, .totals-table {
+              width: 100%;
+              border-collapse: collapse;
+            }
+            .meta-table td, .items-table td, .totals-table td {
+              padding: 2px 0;
+              font-size: 11px;
+            }
+            .items-table th {
+              text-align: left;
+              font-size: 11px;
+              padding: 4px 0;
+              border-bottom: 1px dashed #000;
+            }
+            .totals-table {
+              margin-top: 5px;
+            }
+            .totals-table td {
+              padding: 1px 0;
+            }
+            .totals-table .grand-total {
+              font-size: 13px;
+              font-weight: bold;
+              border-top: 1px dashed #000;
+              padding-top: 4px;
+            }
+            .footer-msg {
+              margin-top: 15px;
+              font-size: 10px;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="text-center">
+            <div class="header-title">${salonName}</div>
+            <div class="header-sub">${logoSub}</div>
+            <div class="header-sub">Ph: ${phone}</div>
+          </div>
+          
+          <div class="divider"></div>
+          
+          <table class="meta-table">
+            <tr><td><b>Date:</b> ${new Date(invoiceData.billing_at).toLocaleString("en-IN")}</td></tr>
+            <tr><td><b>Invoice #:</b> ${invoiceData.invoice_number}</td></tr>
+            <tr><td><b>Client:</b> ${invoiceData.client_name} (${invoiceData.mobile})</td></tr>
+            ${invoiceData.staff_name ? `<tr><td><b>Stylist:</b> ${invoiceData.staff_name}</td></tr>` : ""}
+            ${invoiceData.payment_method ? `<tr><td><b>Payment:</b> ${invoiceData.payment_method}</td></tr>` : ""}
+          </table>
+          
+          <div class="divider"></div>
+          
+          <table class="items-table">
+            <thead>
+              <tr>
+                <th>Item / Service</th>
+                <th style="text-align: center; width: 30px;">Qty</th>
+                <th style="text-align: right; width: 70px;">Price</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${itemsData.map(item => `
+                <tr>
+                  <td>
+                    ${item.item_type === "product" ? "[PKT] " : ""}${item.service_name}
+                    ${item.staff_name ? `<br/><small style="font-size:9px;color:#555;">(${item.staff_name})</small>` : ""}
+                  </td>
+                  <td style="text-align: center; vertical-align: top;">${item.quantity}</td>
+                  <td style="text-align: right; vertical-align: top;">Rs ${Number(item.price * item.quantity).toFixed(2)}</td>
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>
+          
+          <div class="divider"></div>
+          
+          <table class="totals-table">
+            ${invoiceData.subtotal ? `<tr><td>Subtotal</td><td class="text-right">Rs ${Number(invoiceData.subtotal).toFixed(2)}</td></tr>` : ""}
+            ${invoiceData.discount ? `<tr><td>Discount</td><td class="text-right">-Rs ${Number(invoiceData.discount).toFixed(2)}</td></tr>` : ""}
+            ${invoiceData.tax ? `<tr><td>GST (${invoiceData.tax_rate || 5}%)</td><td class="text-right">Rs ${Number(invoiceData.tax).toFixed(2)}</td></tr>` : ""}
+            ${invoiceData.tip ? `<tr><td>Stylist Tip</td><td class="text-right">Rs ${Number(invoiceData.tip).toFixed(2)}</td></tr>` : ""}
+            <tr class="grand-total">
+              <td class="bold">GRAND TOTAL</td>
+              <td class="text-right bold">Rs ${Number(invoiceData.total).toFixed(2)}</td>
+            </tr>
+          </table>
+          
+          <div class="divider"></div>
+          
+          <div class="text-center footer-msg">
+            <b>Thank you for visiting us!</b><br/>
+            Follow us on Instagram<br/>
+            @toniandguy_essensual_gorantla
+          </div>
+          
+          <script>
+            window.onload = function() {
+              window.print();
+              setTimeout(function() { window.close(); }, 500);
+            };
+          </script>
+        </body>
+      </html>
+    `;
+    printWindow.document.write(html);
+    printWindow.document.close();
+  };
+
+  const handleViewInvoice = async (id) => {
     try {
       const details = await fetchInvoiceDetails(id);
-      setBill({
-        id: details.invoice.id,
-        invoice_number: details.invoice.invoice_number,
-        customer_id: details.invoice.customer_id,
-        client_name: details.invoice.client_name,
-        mobile: details.invoice.mobile,
-        items: (details.items || []).map(item => ({ ...item, item_type: item.item_type || "service" })),
-        discount: details.invoice.discount,
-        tip: details.invoice.tip || 0,
-        tax_enabled: Number(details.invoice.tax || 0) > 0,
-        tax_rate: details.invoice.tax_rate || 0,
-        payment_method: details.invoice.payment_method,
-        transaction_id: details.invoice.transaction_id || "",
-        notes: details.invoice.notes || "",
-        staff_name: details.invoice.staff_name || "",
-        is_member: details.invoice.customer?.is_member || false,
-        membership_tier: details.invoice.customer?.membership_tier || "Member",
-        membership_id: details.invoice.customer?.membership_id || "",
-        membership_end: details.invoice.customer?.membership_end || "",
-        billing_at: new Date(details.invoice.billing_at).toISOString().slice(0, 16),
-      });
-      setInvoice(details.invoice);
-      setInvoiceItems((details.items || []).map(item => ({ ...item, total: Number(item.quantity || 1) * Number(item.price || 0) })));
-      setBillSaved(true);
-      setAttemptedSubmit(false);
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    } catch (err) { toast.error(err.message); }
+      setViewInvoiceData(details);
+    } catch (err) {
+      toast.error(err.message || "Failed to load invoice details");
+    }
   };
   // Assign to ref so useEffect (which runs before const hoisting) can call it
-  editInvoiceRef.current = editInvoice;
+  handleViewInvoiceRef.current = handleViewInvoice;
 
-  const printInvoice = () => setTimeout(() => window.print(), 100);
+  const printInvoice = () => {
+    if (invoice) {
+      handlePrintThermal(invoice, invoiceItems);
+    } else {
+      toast.error("Please save the bill first before printing.");
+    }
+  };
 
   const shareInvoice = () => {
     if (!invoice) {
@@ -506,7 +643,7 @@ export default function BillingPOS() {
           </div>
           <div className="history-list">
             {history.map((row) => (
-              <button type="button" className="history-row" key={row.id} onClick={() => editInvoice(row.id)}>
+              <button type="button" className="history-row" key={row.id} onClick={() => handleViewInvoice(row.id)}>
                 <span><strong>{row.invoice_number}</strong> {row.client_name}</span>
                 <span>Rs {row.total.toLocaleString("en-IN")} <Eye size={14} /></span>
               </button>
@@ -516,6 +653,118 @@ export default function BillingPOS() {
           </div>
         </div>
       </aside>
+
+      {/* View Invoice Modal Overlay */}
+      {viewInvoiceData && (
+        <div className="modal-overlay" style={{ zIndex: 1100 }}>
+          <div className="modal" style={{ maxWidth: "450px" }}>
+            <div className="modal-header">
+              <div className="modal-title">Receipt Details</div>
+              <button type="button" className="modal-close" onClick={() => setViewInvoiceData(null)}>×</button>
+            </div>
+            <div className="modal-body" style={{ padding: "1.5rem" }}>
+              <div className="preview-card" style={{ border: "1px solid var(--a-border)", background: "#fff", padding: "1.5rem" }}>
+                <div className="invoice-brand" style={{ fontSize: "1.4rem", textAlign: "center" }}>
+                  {settings?.name || "Toni & Guy Essensuals"}
+                </div>
+                <div className="invoice-meta" style={{ textAlign: "center", marginBottom: "1rem" }}>
+                  {viewInvoiceData.invoice.invoice_number}
+                </div>
+                
+                <div style={{ fontSize: "0.75rem", borderTop: "1px solid var(--a-border)", borderBottom: "1px solid var(--a-border)", padding: "0.6rem 0", display: "flex", flexDirection: "column", gap: "0.3rem" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between" }}>
+                    <span style={{ color: "#666" }}>Date:</span>
+                    <strong>{new Date(viewInvoiceData.invoice.billing_at).toLocaleString("en-IN")}</strong>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between" }}>
+                    <span style={{ color: "#666" }}>Client:</span>
+                    <strong>{viewInvoiceData.invoice.client_name} ({viewInvoiceData.invoice.mobile})</strong>
+                  </div>
+                  {viewInvoiceData.invoice.staff_name && (
+                    <div style={{ display: "flex", justifyContent: "space-between" }}>
+                      <span style={{ color: "#666" }}>Main Stylist:</span>
+                      <strong>{viewInvoiceData.invoice.staff_name}</strong>
+                    </div>
+                  )}
+                  {viewInvoiceData.invoice.payment_method && (
+                    <div style={{ display: "flex", justifyContent: "space-between" }}>
+                      <span style={{ color: "#666" }}>Payment Method:</span>
+                      <strong>{viewInvoiceData.invoice.payment_method}</strong>
+                    </div>
+                  )}
+                </div>
+
+                <div className="invoice-lines" style={{ padding: "1rem 0", minHeight: "auto", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                  {viewInvoiceData.items.map((item, index) => (
+                    <div className="invoice-line" key={index} style={{ display: "flex", justifyContent: "space-between", fontSize: "0.75rem" }}>
+                      <span>
+                        {item.item_type === "product" && <span style={{ opacity: 0.6, marginRight: 4 }}>[PKT]</span>}
+                        {item.service_name} x{item.quantity}
+                        {item.staff_name && <small style={{ display: "block", color: "#888", fontSize: "0.65rem" }}>({item.staff_name})</small>}
+                      </span>
+                      <strong>Rs {Number(item.price * item.quantity).toLocaleString("en-IN")}</strong>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="invoice-totals" style={{ borderTop: "1px solid var(--a-border)", paddingTop: "0.75rem", display: "flex", flexDirection: "column", gap: "0.35rem", fontSize: "0.75rem" }}>
+                  {Number(viewInvoiceData.invoice.subtotal || 0) > 0 && (
+                    <div style={{ display: "flex", justifyContent: "space-between" }}>
+                      <span>Subtotal</span>
+                      <strong>Rs {Number(viewInvoiceData.invoice.subtotal).toLocaleString("en-IN")}</strong>
+                    </div>
+                  )}
+                  {Number(viewInvoiceData.invoice.discount || 0) > 0 && (
+                    <div style={{ display: "flex", justifyContent: "space-between" }}>
+                      <span>Discount</span>
+                      <strong>-Rs {Number(viewInvoiceData.invoice.discount).toLocaleString("en-IN")}</strong>
+                    </div>
+                  )}
+                  {Number(viewInvoiceData.invoice.tax || 0) > 0 && (
+                    <div style={{ display: "flex", justifyContent: "space-between" }}>
+                      <span>GST ({viewInvoiceData.invoice.tax_rate || 5}%)</span>
+                      <strong>Rs {Number(viewInvoiceData.invoice.tax).toLocaleString("en-IN")}</strong>
+                    </div>
+                  )}
+                  {Number(viewInvoiceData.invoice.tip || 0) > 0 && (
+                    <div style={{ display: "flex", justifyContent: "space-between" }}>
+                      <span>Stylist Tip</span>
+                      <strong>Rs {Number(viewInvoiceData.invoice.tip).toLocaleString("en-IN")}</strong>
+                    </div>
+                  )}
+                  <div className="grand" style={{ borderTop: "1px solid var(--a-border)", paddingTop: "0.5rem", marginTop: "0.2rem", fontSize: "0.95rem", display: "flex", justifyContent: "space-between" }}>
+                    <span style={{ fontWeight: "bold" }}>Grand Total</span>
+                    <strong style={{ color: "#c9b99a" }}>Rs {Number(viewInvoiceData.invoice.total).toLocaleString("en-IN")}</strong>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button 
+                type="button" 
+                className="tbl-btn" 
+                onClick={() => {
+                  const invData = { ...viewInvoiceData.invoice, is_member: !!viewInvoiceData.invoice.customer?.is_member };
+                  const url = buildWhatsAppLink(viewInvoiceData.invoice.mobile, formatInvoiceMessage(invData, viewInvoiceData.items, settings));
+                  window.open(url, "_blank", "noopener,noreferrer");
+                }}
+              >
+                Share WhatsApp
+              </button>
+              <button 
+                type="button" 
+                className="tbl-btn" 
+                onClick={() => handlePrintThermal(viewInvoiceData.invoice, viewInvoiceData.items)}
+              >
+                Print Receipt
+              </button>
+              <button type="button" className="btn-add" onClick={() => setViewInvoiceData(null)}>
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
