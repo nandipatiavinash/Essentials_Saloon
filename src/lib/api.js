@@ -10,6 +10,23 @@ const optional = async (promise, fallback) => {
   return res.data ?? fallback;
 };
 
+export function getISTDate() {
+  const d = new Date();
+  const utc = d.getTime() + (d.getTimezoneOffset() * 60000);
+  return new Date(utc + (3600000 * 5.5));
+}
+
+export function parseDateOrIST(val) {
+  if (!val) return getISTDate();
+  let str = String(val);
+  if (str.includes("T") && !str.endsWith("Z") && !str.includes("+") && !str.match(/-\d{2}:\d{2}$/)) {
+    str += "+05:30";
+  }
+  const date = new Date(str);
+  if (isNaN(date.getTime())) return getISTDate();
+  return date;
+}
+
 // ─── Fetch all public data ────────────────────────────────────────────────────
 export async function fetchPublicData() {
   const [cats, svcs, offs, gal, settRes] = await Promise.all([
@@ -244,14 +261,14 @@ export async function saveInvoice(payload) {
 
   if (isMember) {
     if (!mId) {
-      const year = new Date(payload.billing_at || new Date()).getFullYear();
+      const year = parseDateOrIST(payload.billing_at).getFullYear();
       const rand = Math.floor(10000 + Math.random() * 90000);
       mId = `MEM-${year}-${rand}`;
     }
     if (!mTier || mTier === "Regular") mTier = "Member";
-    if (!mStart) mStart = new Date(payload.billing_at || new Date()).toISOString().slice(0, 10);
+    if (!mStart) mStart = parseDateOrIST(payload.billing_at).toISOString().slice(0, 10);
     if (!mEnd) {
-      const nextYear = new Date(payload.billing_at || new Date());
+      const nextYear = parseDateOrIST(payload.billing_at);
       nextYear.setFullYear(nextYear.getFullYear() + 1);
       mEnd = nextYear.toISOString().slice(0, 10);
     }
@@ -263,7 +280,7 @@ export async function saveInvoice(payload) {
       name: payload.client_name.trim(),
       mobile,
       notes: payload.customer_notes || null,
-      last_visit_at: payload.billing_at || new Date().toISOString(),
+      last_visit_at: payload.billing_at || getISTDate().toISOString(),
       total_spend: totals.total,
       visit_count: 1,
       preferred_services: payload.items.map((item) => item.service_name).filter(Boolean),
@@ -295,7 +312,7 @@ export async function saveInvoice(payload) {
     status: payload.status || "paid",
     refund_status: payload.refund_status || "none",
     created_by: userRes?.user?.id || null,
-    billing_at: payload.billing_at || new Date().toISOString(),
+    billing_at: payload.billing_at || getISTDate().toISOString(),
   };
 
   const invoiceReq = payload.id
@@ -329,7 +346,7 @@ export async function saveInvoice(payload) {
     const { data: invRow } = await t("inventory").select("stock_qty").eq("id", pItem.inventory_id).single();
     if (invRow) {
       const newQty = Math.max(0, Number(invRow.stock_qty) - Number(pItem.quantity || 1));
-      await t("inventory").update({ stock_qty: newQty, updated_at: new Date().toISOString() }).eq("id", pItem.inventory_id);
+      await t("inventory").update({ stock_qty: newQty, updated_at: getISTDate().toISOString() }).eq("id", pItem.inventory_id);
     }
   }
 
@@ -559,9 +576,11 @@ export function buildAnalytics(invoices = []) {
 
   paid.forEach((invoice) => {
     const date = new Date(invoice.billing_at || invoice.created_at);
-    const day = date.toISOString().slice(0, 10);
+    const utc = date.getTime() + (date.getTimezoneOffset() * 60000);
+    const istDate = new Date(utc + (3600000 * 5.5));
+    const day = istDate.toISOString().slice(0, 10);
     const month = day.slice(0, 7);
-    const hour = String(date.getHours()).padStart(2, "0") + ":00";
+    const hour = String(istDate.getHours()).padStart(2, "0") + ":00";
     byDay[day] = (byDay[day] || 0) + Number(invoice.total || 0);
     byMonth[month] = (byMonth[month] || 0) + Number(invoice.total || 0);
     byHour[hour] = (byHour[hour] || 0) + Number(invoice.total || 0);
@@ -573,9 +592,9 @@ export function buildAnalytics(invoices = []) {
   });
 
   const sortedDays = Object.entries(byDay).sort(([a], [b]) => a.localeCompare(b));
-  const todayKey = new Date().toISOString().slice(0, 10);
+  const todayKey = getISTDate().toISOString().slice(0, 10);
   const monthKey = todayKey.slice(0, 7);
-  const weekAgo = new Date();
+  const weekAgo = getISTDate();
   weekAgo.setDate(weekAgo.getDate() - 6);
 
   return {
@@ -627,7 +646,7 @@ function normalizePhone(phone = "") {
 }
 
 async function makeInvoiceNumber() {
-  const today = new Date().toISOString().slice(0, 10).replaceAll("-", ""); // YYYYMMDD
+  const today = getISTDate().toISOString().slice(0, 10).replaceAll("-", ""); // YYYYMMDD
   const prefix = `INV-${today}-`;
   const { data, error } = await supabase
     .from("invoices")
@@ -787,7 +806,10 @@ export async function closeCashRegister(id, closingCash, notes) {
 export async function updateCustomerMembership(customerId, details) {
   const { data: row, error } = await t("customers")
     .update({
+      name: details.name,
+      mobile: details.mobile,
       is_member: !!details.is_member,
+      membership_id: details.membership_id || null,
       membership_tier: details.membership_tier || "Regular",
       membership_start: details.membership_start || null,
       membership_end: details.membership_end || null,

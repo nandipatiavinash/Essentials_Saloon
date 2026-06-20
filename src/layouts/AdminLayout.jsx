@@ -98,15 +98,15 @@ export default function AdminLayout() {
                 <span>{n.label}</span>
               </NavLink>
             ))}
-            <div className="sidebar-section">Content</div>
-            {contentNav.map(n => (
+            <div className="sidebar-section">System</div>
+            {systemNav.map(n => (
               <NavLink key={n.id} to={n.path} className={({ isActive }) => `sidebar-item${isActive ? " active" : ""}`}>
                 <span className="sidebar-icon">{n.icon}</span>
                 <span>{n.label}</span>
               </NavLink>
             ))}
-            <div className="sidebar-section">System</div>
-            {systemNav.map(n => (
+            <div className="sidebar-section">Content</div>
+            {contentNav.map(n => (
               <NavLink key={n.id} to={n.path} className={({ isActive }) => `sidebar-item${isActive ? " active" : ""}`}>
                 <span className="sidebar-icon">{n.icon}</span>
                 <span>{n.label}</span>
