@@ -157,16 +157,28 @@ export default function ReportsManager() {
         <head>
           <title>EOD Report - ${formattedDate}</title>
           <style>
+            @page {
+              size: auto;
+              margin: 0mm !important;
+            }
+            @media print {
+              @page {
+                margin: 0mm !important;
+              }
+              body {
+                padding: 20mm !important;
+              }
+            }
             body {
               font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-              padding: 40px;
+              padding: 20mm;
               color: #333;
               line-height: 1.4;
             }
             .header {
               border-bottom: 2px solid #c9b99a;
               padding-bottom: 20px;
-              margin-bottom: 25px;
+              margin-bottom: 80px;
             }
             .header h1 {
               font-size: 24px;
@@ -260,7 +272,7 @@ export default function ReportsManager() {
           </style>
         </head>
         <body>
-          <div class="header" style="text-align: center; margin-bottom: 25px; border-bottom: 2px solid #c9b99a; padding-bottom: 20px;">
+          <div class="header" style="text-align: center; margin-bottom: 80px; border-bottom: 2px solid #c9b99a; padding-bottom: 20px;">
             <div style="font-size: 32px; font-weight: 800; letter-spacing: 4px; margin: 0; color: #000; font-family: 'Montserrat', sans-serif; text-transform: uppercase;">TONI & GUY</div>
             <div style="font-size: 14px; font-weight: 400; letter-spacing: 6px; margin: 5px 0 0 0; color: #c9b99a; font-family: 'Montserrat', sans-serif; text-transform: uppercase;">Essensuals Gorantla</div>
             <p style="margin: 8px 0 0 0; font-size: 11px; color: #666; font-family: sans-serif; letter-spacing: 1px;">
@@ -271,7 +283,7 @@ export default function ReportsManager() {
               Daily End-Of-Day (EOD) Report
             </p>
             <p style="margin: 5px 0 0 0; color: #666; font-size: 11px; font-family: sans-serif;">
-              Date: ${formattedDate} &nbsp;|&nbsp; Generated: ${new Date().toLocaleString("en-IN")}
+              Date: ${formattedDate}
             </p>
           </div>
 
@@ -956,6 +968,11 @@ export default function ReportsManager() {
                   <option value="excel">Excel Spreadsheet (Download)</option>
                   <option value="both">Both PDF & Excel</option>
                 </select>
+                {(reportFormat === "pdf" || reportFormat === "both") && (
+                  <div style={{ fontSize: "0.62rem", color: "var(--gold)", marginTop: "0.3rem", fontStyle: "italic", lineHeight: "1.2" }}>
+                    💡 To send the PDF to WhatsApp: 1. Click 'Generate & Print PDF' and save it as a PDF file. 2. Click 'Send EOD text to WhatsApp' to send the text summary. 3. Attach the saved PDF file to that WhatsApp chat.
+                  </div>
+                )}
               </div>
               <div className="form-group" style={{ flex: 1 }}>
                 <label className="form-label">Recipient Email Address</label>
@@ -986,9 +1003,14 @@ export default function ReportsManager() {
                 </>
               )}
               {reportFormat === "pdf" && (
-                <button className="btn-add" onClick={handleExportPDF} style={{ flex: 1, padding: "0.75rem" }}>
-                  Generate & Print PDF
-                </button>
+                <>
+                  <button className="btn-add" onClick={handleExportPDF} style={{ flex: 1, padding: "0.75rem", background: "transparent", border: "1px solid #c9b99a", color: "#c9b99a" }}>
+                    Generate & Print PDF
+                  </button>
+                  <button className="btn-add" onClick={handleSendWhatsappReport} disabled={sendingWhatsapp} style={{ flex: 1, padding: "0.75rem" }}>
+                    {sendingWhatsapp ? "Opening WhatsApp..." : "Send EOD text to WhatsApp"}
+                  </button>
+                </>
               )}
               {reportFormat === "excel" && (
                 <button className="btn-add" onClick={handleExportExcel} style={{ flex: 1, padding: "0.75rem" }}>
@@ -996,9 +1018,14 @@ export default function ReportsManager() {
                 </button>
               )}
               {reportFormat === "both" && (
-                <button className="btn-add" onClick={() => { handleExportPDF(); handleExportExcel(); }} style={{ flex: 1, padding: "0.75rem" }}>
-                  Generate PDF & Export Excel
-                </button>
+                <>
+                  <button className="btn-add" onClick={() => { handleExportPDF(); handleExportExcel(); }} style={{ flex: 1, padding: "0.75rem", background: "transparent", border: "1px solid #c9b99a", color: "#c9b99a" }}>
+                    Generate PDF & Export Excel
+                  </button>
+                  <button className="btn-add" onClick={handleSendWhatsappReport} disabled={sendingWhatsapp} style={{ flex: 1, padding: "0.75rem" }}>
+                    {sendingWhatsapp ? "Opening WhatsApp..." : "Send EOD text to WhatsApp"}
+                  </button>
+                </>
               )}
             </div>
           </div>
