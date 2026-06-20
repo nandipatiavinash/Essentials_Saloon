@@ -32,7 +32,7 @@ const emptyBill = () => ({
 });
 
 export default function BillingPOS() {
-  const { services, settings, staff, inventory, reload } = useAdmin();
+  const { services, settings, staff, attendance, inventory, reload } = useAdmin();
   const [searchParams] = useSearchParams();
   const [bill, setBill] = useState(emptyBill);
   const [saving, setSaving] = useState(false);
@@ -50,6 +50,24 @@ export default function BillingPOS() {
   const activeServices = useMemo(() => (services || []).filter((svc) => svc.active), [services]);
   const activeInventory = useMemo(() => (inventory || []).filter(item => Number(item.stock_qty) > 0), [inventory]);
   const totals = useMemo(() => calculateInvoiceTotals(bill), [bill]);
+
+  const todayStr = (bill.billing_at || new Date().toISOString()).slice(0, 10);
+  const presentStaff = useMemo(() => {
+    const todayAttendance = (attendance || []).filter(a => a.date === todayStr);
+    const selectedStaffNames = new Set();
+    if (bill.staff_name) selectedStaffNames.add(bill.staff_name);
+    (bill.items || []).forEach(item => {
+      if (item.staff_name) selectedStaffNames.add(item.staff_name);
+    });
+
+    return (staff || []).filter(s => {
+      if (!s.active) return false;
+      if (selectedStaffNames.has(s.name)) return true;
+      const att = todayAttendance.find(a => a.staff_id === s.id);
+      if (!att) return false;
+      return att.status === "present" || att.status === "late";
+    });
+  }, [staff, attendance, todayStr, bill.staff_name, bill.items]);
 
   useEffect(() => {
     if (bill.payment_method === "Cash + UPI") {
@@ -573,7 +591,7 @@ export default function BillingPOS() {
             <div className="form-row" style={{ marginTop: "1rem" }}>
               <div className="form-group" style={{ zIndex: 10 }}>
                 <label className="form-label">Staff Name</label>
-                <SearchableStaffDropdown staffList={staff} value={bill.staff_name} onChange={(val) => setBill({ ...bill, staff_name: val })} placeholder="Select Staff" isInvalid={attemptedSubmit && !bill.staff_name} />
+                <SearchableStaffDropdown staffList={presentStaff} value={bill.staff_name} onChange={(val) => setBill({ ...bill, staff_name: val })} placeholder="Select Staff" isInvalid={attemptedSubmit && !bill.staff_name} />
               </div>
               <div className="form-group">
                 <label className="form-label">Billing Date/Time</label>
@@ -632,7 +650,7 @@ export default function BillingPOS() {
                       {item.service_name}
                     </div>
                     <div style={{ marginTop: "0.25rem", width: "160px" }}>
-                      <SearchableStaffDropdown staffList={staff} value={item.staff_name} onChange={(val) => updateItem(index, { staff_name: val })} placeholder="Select Staff" isInvalid={attemptedSubmit && !item.staff_name} />
+                      <SearchableStaffDropdown staffList={presentStaff} value={item.staff_name} onChange={(val) => updateItem(index, { staff_name: val })} placeholder="Select Staff" isInvalid={attemptedSubmit && !item.staff_name} />
                     </div>
                   </div>
                   <input className="mini-input qty" type="number" min="1" value={item.quantity} onChange={(e) => updateItem(index, { quantity: e.target.value })} />
