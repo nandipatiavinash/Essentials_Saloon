@@ -362,7 +362,6 @@ Are you absolutely sure you want to proceed?`)){g(!0);try{await et(),S.success("
             }
             .section {
               margin-bottom: 30px;
-              page-break-inside: avoid;
             }
             .section-title {
               font-size: 16px;
@@ -441,14 +440,17 @@ Are you absolutely sure you want to proceed?`)){g(!0);try{await et(),S.success("
           </style>
         </head>
         <body>
-          <div class="header">
-            <div style="text-align: center; margin-bottom: 20px;">
-              <h1 style="font-size: 32px; font-weight: 800; letter-spacing: 4px; margin: 0; color: #000; font-family: 'Montserrat', sans-serif;">TONI & GUY</h1>
-              <h3 style="font-size: 14px; font-weight: 400; letter-spacing: 6px; margin: 5px 0 0 0; color: #c9b99a; font-family: 'Montserrat', sans-serif; text-transform: uppercase;">Essensuals Gorantla</h3>
-              <div style="width: 80px; height: 2px; background: #c9b99a; margin: 15px auto 0 auto;"></div>
-            </div>
-            <p style="text-align: center; margin: 15px 0 0 0; color: #666; font-size: 13px; font-family: sans-serif;">
-              <strong>DAILY END-OF-DAY (EOD) REPORT</strong><br/>
+          <div class="header" style="text-align: center; margin-bottom: 25px; border-bottom: 2px solid #c9b99a; padding-bottom: 20px;">
+            <div style="font-size: 32px; font-weight: 800; letter-spacing: 4px; margin: 0; color: #000; font-family: 'Montserrat', sans-serif; text-transform: uppercase;">TONI & GUY</div>
+            <div style="font-size: 14px; font-weight: 400; letter-spacing: 6px; margin: 5px 0 0 0; color: #c9b99a; font-family: 'Montserrat', sans-serif; text-transform: uppercase;">Essensuals Gorantla</div>
+            <p style="margin: 8px 0 0 0; font-size: 11px; color: #666; font-family: sans-serif; letter-spacing: 1px;">
+              Gorantla, Guntur, Andhra Pradesh
+            </p>
+            <div style="width: 80px; height: 2px; background: #c9b99a; margin: 15px auto 0 auto;"></div>
+            <p style="margin: 15px 0 0 0; color: #333; font-size: 13px; font-family: sans-serif; font-weight: bold; letter-spacing: 1px; text-transform: uppercase;">
+              Daily End-Of-Day (EOD) Report
+            </p>
+            <p style="margin: 5px 0 0 0; color: #666; font-size: 11px; font-family: sans-serif;">
               Date: ${O} &nbsp;|&nbsp; Generated: ${new Date().toLocaleString("en-IN")}
             </p>
           </div>
