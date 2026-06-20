@@ -27,8 +27,6 @@ const contentNav = [
 const systemNav = [
   { id: "analytics", path: "/analytics", icon: "📈", label: "Analytics" },
   { id: "reports", path: "/reports", icon: "💬", label: "Reports" },
-  { id: "imports", path: "/imports", icon: "📥", label: "Import Sales" },
-  { id: "qr", path: "/qr", icon: "⬛", label: "QR Codes" },
   { id: "settings", path: "/settings", icon: "⚙️", label: "Settings" },
 ];
 

@@ -124,6 +124,42 @@ export default function AttendanceManager() {
     }));
   };
 
+  const handleSingleSave = async (staffId, updatedLog) => {
+    setSaving(true);
+    try {
+      await saveAttendance([updatedLog]);
+      toast.success("Attendance updated for operator.");
+      reload();
+    } catch (err) {
+      toast.error(err.message || "Failed to save attendance");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const logCheckIn = async (staffId) => {
+    const now = new Date();
+    const time24 = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+    const log = {
+      ...(attendanceLogs[staffId] || { staff_id: staffId, date: date, notes: "" }),
+      check_in: time24,
+      status: "present"
+    };
+    setAttendanceLogs(prev => ({ ...prev, [staffId]: log }));
+    await handleSingleSave(staffId, log);
+  };
+
+  const logCheckOut = async (staffId) => {
+    const now = new Date();
+    const time24 = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+    const log = {
+      ...(attendanceLogs[staffId] || { staff_id: staffId, date: date, notes: "", status: "present", check_in: "09:00" }),
+      check_out: time24
+    };
+    setAttendanceLogs(prev => ({ ...prev, [staffId]: log }));
+    await handleSingleSave(staffId, log);
+  };
+
   const handleSaveAttendance = async () => {
     setSaving(true);
     try {
@@ -306,18 +342,40 @@ export default function AttendanceManager() {
                       </select>
                     </td>
                     <td>
-                      <TimePickerAMPM
-                        value={log.check_in}
-                        onChange={val => handleFieldChange(s.id, "check_in", val)}
-                        disabled={log.status === "absent" || log.status === "leave"}
-                      />
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                        <TimePickerAMPM
+                          value={log.check_in}
+                          onChange={val => handleFieldChange(s.id, "check_in", val)}
+                          disabled={log.status === "absent" || log.status === "leave"}
+                        />
+                        <button
+                          type="button"
+                          className="tbl-btn"
+                          style={{ padding: "0.3rem 0.5rem", fontSize: "0.65rem", background: "rgba(201,185,154,0.1)", border: "1px solid var(--gold)", color: "var(--gold)" }}
+                          disabled={log.status === "absent" || log.status === "leave" || saving}
+                          onClick={() => logCheckIn(s.id)}
+                        >
+                          Check In
+                        </button>
+                      </div>
                     </td>
                     <td>
-                      <TimePickerAMPM
-                        value={log.check_out}
-                        onChange={val => handleFieldChange(s.id, "check_out", val)}
-                        disabled={log.status === "absent" || log.status === "leave"}
-                      />
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                        <TimePickerAMPM
+                          value={log.check_out}
+                          onChange={val => handleFieldChange(s.id, "check_out", val)}
+                          disabled={log.status === "absent" || log.status === "leave"}
+                        />
+                        <button
+                          type="button"
+                          className="tbl-btn"
+                          style={{ padding: "0.3rem 0.5rem", fontSize: "0.65rem", background: "rgba(201,185,154,0.1)", border: "1px solid var(--gold)", color: "var(--gold)" }}
+                          disabled={log.status === "absent" || log.status === "leave" || saving}
+                          onClick={() => logCheckOut(s.id)}
+                        >
+                          Check Out
+                        </button>
+                      </div>
                     </td>
 
                     <td>

@@ -84,7 +84,17 @@ export function formatInvoiceMessage(invoice, items = [], settings = {}) {
   }
 
   msg.push(``);
-  msg.push(`*Amount Paid:* Rs ${totalPaid} ✅`);
+  let paymentText = invoice.payment_method || "Cash";
+  if (invoice.payment_method === "Cash + UPI" && invoice.transaction_id?.includes("cash:")) {
+    const parts = invoice.transaction_id.split("|");
+    let c = 0, u = 0;
+    parts.forEach(p => {
+      if (p.startsWith("cash:")) c = p.replace("cash:", "");
+      if (p.startsWith("upi:")) u = p.replace("upi:", "");
+    });
+    paymentText = `Cash + UPI (Cash: Rs ${c}, UPI: Rs ${u})`;
+  }
+  msg.push(`*Amount Paid:* Rs ${totalPaid} ✅ (${paymentText})`);
   msg.push(`*Invoice:* ${invoice.invoice_number || "—"}`);
   msg.push(``);
 

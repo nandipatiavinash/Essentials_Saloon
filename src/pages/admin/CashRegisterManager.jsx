@@ -27,21 +27,36 @@ export default function CashRegisterManager() {
       return invDate === date && inv.status !== "void";
     });
 
-    const breakdown = { Cash: 0, UPI: 0, Card: 0, "Bank Transfer": 0 };
+    const breakdown = { Cash: 0, UPI: 0, Card: 0 };
     let totalRevenue = 0;
     list.forEach(inv => {
       const amt = Number(inv.total || 0);
-      breakdown[inv.payment_method] = (breakdown[inv.payment_method] || 0) + amt;
+      const payment = inv.payment_method || "Unknown";
+      
+      if (payment === "Cash + UPI" && inv.transaction_id && inv.transaction_id.includes("cash:")) {
+        const parts = inv.transaction_id.split("|");
+        let cashAmt = 0;
+        let upiAmt = 0;
+        parts.forEach(p => {
+          if (p.startsWith("cash:")) cashAmt = Number(p.replace("cash:", "")) || 0;
+          if (p.startsWith("upi:")) upiAmt = Number(p.replace("upi:", "")) || 0;
+        });
+        breakdown["Cash"] = (breakdown["Cash"] || 0) + cashAmt;
+        breakdown["UPI"] = (breakdown["UPI"] || 0) + upiAmt;
+      } else {
+        if (payment !== "Bank Transfer") {
+          breakdown[payment] = (breakdown[payment] || 0) + amt;
+        }
+      }
       totalRevenue += amt;
     });
 
     return {
       count: list.length,
       revenue: totalRevenue,
-      cash: breakdown.Cash,
-      upi: breakdown.UPI,
-      card: breakdown.Card,
-      bankTransfer: breakdown["Bank Transfer"],
+      cash: breakdown.Cash || 0,
+      upi: breakdown.UPI || 0,
+      card: breakdown.Card || 0,
       invoiceList: list
     };
   }, [invoices, date]);
@@ -131,7 +146,6 @@ Payment Methods:
   - Cash Sales:  Rs ${salesForDate.cash.toLocaleString("en-IN")}
   - UPI Sales:   Rs ${salesForDate.upi.toLocaleString("en-IN")}
   - Card Sales:  Rs ${salesForDate.card.toLocaleString("en-IN")}
-  - Bank Trans:  Rs ${salesForDate.bankTransfer.toLocaleString("en-IN")}
 `;
 
       // 1b. Compile Tabular Invoice List
@@ -398,13 +412,9 @@ Toni & Guy Essensuals Gorantla, Guntur
                 <span>Card Payments</span>
                 <strong>Rs {salesForDate.card.toLocaleString("en-IN")}</strong>
               </div>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.72rem" }}>
-                <span>Bank Transfers</span>
-                <strong>Rs {salesForDate.bankTransfer.toLocaleString("en-IN")}</strong>
-              </div>
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.72rem", borderTop: "1px solid #eee", paddingTop: "0.5rem" }}>
                 <span>Non-Cash Revenue</span>
-                <strong>Rs {(salesForDate.upi + salesForDate.card + salesForDate.bankTransfer).toLocaleString("en-IN")}</strong>
+                <strong>Rs {(salesForDate.upi + salesForDate.card).toLocaleString("en-IN")}</strong>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.72rem", borderTop: "1px double #ccc", paddingTop: "0.5rem" }}>
                 <span style={{ fontWeight: "bold" }}>Total Revenue ({salesForDate.count} bills)</span>

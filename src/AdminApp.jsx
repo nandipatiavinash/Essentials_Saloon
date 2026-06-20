@@ -9,12 +9,10 @@ import CategoriesManager from "./pages/admin/CategoriesManager";
 import OffersManager from "./pages/admin/OffersManager";
 import GalleryManager from "./pages/admin/GalleryManager";
 import BookingsManager from "./pages/admin/BookingsManager";
-import QRManager from "./pages/admin/QRManager";
 import Settings from "./pages/admin/Settings";
 import BillingPOS from "./pages/admin/BillingPOS";
 import ClientsManager from "./pages/admin/ClientsManager";
 import AnalyticsDashboard from "./pages/admin/AnalyticsDashboard";
-import ImportSales from "./pages/admin/ImportSales";
 import ReportsManager from "./pages/admin/ReportsManager";
 import MembershipManager from "./pages/admin/MembershipManager";
 import AttendanceManager from "./pages/admin/AttendanceManager";
@@ -65,9 +63,7 @@ export default function AdminApp() {
         <Route path="inventory" element={<InventoryManager />} />
         <Route path="register" element={<CashRegisterManager />} />
         <Route path="analytics" element={<AnalyticsDashboard />} />
-        <Route path="imports" element={<ImportSales />} />
         <Route path="reports" element={<ReportsManager />} />
-        <Route path="qr" element={<QRManager />} />
         <Route path="settings" element={<Settings />} />
         <Route path="staff/:id" element={<StaffProfile />} />
       </Route>

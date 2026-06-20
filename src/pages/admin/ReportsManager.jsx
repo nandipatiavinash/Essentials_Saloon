@@ -53,7 +53,19 @@ export default function ReportsManager() {
       totalTips += tip;
       totalGross += total;
 
-      paymentBreakdown[payment] = (paymentBreakdown[payment] || 0) + total;
+      if (payment === "Cash + UPI" && inv.transaction_id && inv.transaction_id.includes("cash:")) {
+        const parts = inv.transaction_id.split("|");
+        let cashAmt = 0;
+        let upiAmt = 0;
+        parts.forEach(p => {
+          if (p.startsWith("cash:")) cashAmt = Number(p.replace("cash:", "")) || 0;
+          if (p.startsWith("upi:")) upiAmt = Number(p.replace("upi:", "")) || 0;
+        });
+        paymentBreakdown["Cash"] = (paymentBreakdown["Cash"] || 0) + cashAmt;
+        paymentBreakdown["UPI"] = (paymentBreakdown["UPI"] || 0) + upiAmt;
+      } else {
+        paymentBreakdown[payment] = (paymentBreakdown[payment] || 0) + total;
+      }
 
       (inv.invoice_items || []).forEach((item) => {
         const itemStaff = item.staff_name || inv.staff_name || "Unknown Stylist";

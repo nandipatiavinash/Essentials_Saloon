@@ -9,7 +9,62 @@ export default function Dashboard() {
   const { services, bookings, offers, invoices, customers, inventory, reload } = useAdmin();
   const navigate = useNavigate();
   const [resetting, setResetting] = useState(false);
+  const [revenueModal, setRevenueModal] = useState(null); // null | 'today' | 'monthly'
+  const [expandInvoices, setExpandInvoices] = useState(false);
 
+  const getRevenueBreakdown = (range) => {
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const monthStr = todayStr.slice(0, 7);
+
+    const rangeInvoices = (invoices || []).filter((inv) => {
+      if (inv.status === "void" || !inv.billing_at) return false;
+      const invDate = inv.billing_at.slice(0, 10);
+      if (range === "today") {
+        return invDate === todayStr;
+      } else {
+        return invDate.slice(0, 7) === monthStr;
+      }
+    });
+
+    let servicesTotal = 0;
+    let productsTotal = 0;
+    let membershipsTotal = 0;
+    let discountTotal = 0;
+    let gstTotal = 0;
+    let tipsTotal = 0;
+    let grossTotal = 0;
+
+    rangeInvoices.forEach((inv) => {
+      discountTotal += Number(inv.discount || 0);
+      gstTotal += Number(inv.tax || 0);
+      tipsTotal += Number(inv.tip || 0);
+      grossTotal += Number(inv.total || 0);
+
+      (inv.invoice_items || []).forEach((item) => {
+        const itemVal = Number(item.quantity || 1) * Number(item.price || 0);
+        if (item.item_type === "product") {
+          productsTotal += itemVal;
+        } else if (item.item_type === "membership") {
+          membershipsTotal += itemVal;
+        } else {
+          servicesTotal += itemVal;
+        }
+      });
+    });
+
+    return {
+      invoices: rangeInvoices,
+      services: servicesTotal,
+      products: productsTotal,
+      memberships: membershipsTotal,
+      discount: discountTotal,
+      gst: gstTotal,
+      tips: tipsTotal,
+      gross: grossTotal,
+    };
+  };
+
+  const modalData = revenueModal ? getRevenueBreakdown(revenueModal) : null;
   const pendingBookings = bookings?.filter(b => b.status === "pending") || [];
   const analytics = buildAnalytics(invoices || []);
 
@@ -38,12 +93,12 @@ export default function Dashboard() {
   return (
     <>
       <div className="stats-grid">
-        <div className="stat-card">
+        <div className="stat-card" onClick={() => { setRevenueModal("today"); setExpandInvoices(false); }} style={{ cursor: "pointer" }}>
           <div className="stat-label">Today Revenue</div>
           <div className="stat-value">Rs {analytics.todayRevenue.toLocaleString("en-IN")}</div>
           <div className="stat-sub">Live billing total</div>
         </div>
-        <div className="stat-card">
+        <div className="stat-card" onClick={() => { setRevenueModal("monthly"); setExpandInvoices(false); }} style={{ cursor: "pointer" }}>
           <div className="stat-label">Monthly Revenue</div>
           <div className="stat-value">Rs {analytics.monthlyRevenue.toLocaleString("en-IN")}</div>
           <div className="stat-sub">{analytics.billCount} invoices tracked</div>
@@ -151,7 +206,6 @@ export default function Dashboard() {
           <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
             <Link to="/billing" className="tbl-btn" style={{ textAlign: "center", display: "block", textDecoration: "none", padding: "0.8rem" }}>Create Bill</Link>
             <Link to="/analytics" className="tbl-btn" style={{ textAlign: "center", display: "block", textDecoration: "none", padding: "0.8rem" }}>View Analytics</Link>
-            <Link to="/imports" className="tbl-btn" style={{ textAlign: "center", display: "block", textDecoration: "none", padding: "0.8rem" }}>Import Sales</Link>
             <Link to="/services" className="tbl-btn" style={{ textAlign: "center", display: "block", textDecoration: "none", padding: "0.8rem" }}>Manage Services</Link>
             <button
               onClick={handleResetData}
@@ -173,6 +227,142 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
+      {revenueModal && modalData && (
+        <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && setRevenueModal(null)} style={{ zIndex: 1100 }}>
+          <div className="modal" style={{ maxWidth: expandInvoices ? "800px" : "500px", width: "90%", transition: "max-width 0.3s ease" }}>
+            <div className="modal-header">
+              <div className="modal-title" style={{ textTransform: "capitalize" }}>
+                {revenueModal} Revenue Details
+              </div>
+              <button className="modal-close" onClick={() => setRevenueModal(null)}>✕</button>
+            </div>
+            
+            <div className="modal-body" style={{ display: "flex", flexDirection: "column", gap: "1.5rem", maxHeight: "80vh", overflowY: "auto" }}>
+              {!expandInvoices ? (
+                <>
+                  {/* Financial Breakdown */}
+                  <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", background: "rgba(255,255,255,0.02)", padding: "1.25rem", border: "1px solid var(--a-border)" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.75rem" }}>
+                      <span style={{ color: "var(--a-muted)" }}>Services Net (Before GST):</span>
+                      <strong>Rs {modalData.services.toLocaleString("en-IN")}</strong>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.75rem" }}>
+                      <span style={{ color: "var(--a-muted)" }}>Retail Products:</span>
+                      <strong>Rs {modalData.products.toLocaleString("en-IN")}</strong>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.75rem" }}>
+                      <span style={{ color: "var(--a-muted)" }}>Memberships:</span>
+                      <strong>Rs {modalData.memberships.toLocaleString("en-IN")}</strong>
+                    </div>
+                    {modalData.discount > 0 && (
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.75rem", color: "#b71c1c" }}>
+                        <span>Discount Applied:</span>
+                        <strong>-Rs {modalData.discount.toLocaleString("en-IN")}</strong>
+                      </div>
+                    )}
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.75rem" }}>
+                      <span style={{ color: "var(--a-muted)" }}>GST Tax:</span>
+                      <strong>Rs {modalData.gst.toLocaleString("en-IN")}</strong>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.75rem" }}>
+                      <span style={{ color: "var(--a-muted)" }}>Tips Collected:</span>
+                      <strong>Rs {modalData.tips.toLocaleString("en-IN")}</strong>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.9rem", borderTop: "1px dashed var(--a-border)", paddingTop: "0.75rem", marginTop: "0.25rem" }}>
+                      <span style={{ fontWeight: "bold", color: "var(--gold)" }}>Gross Revenue:</span>
+                      <strong style={{ color: "var(--gold)", fontSize: "1rem" }}>Rs {modalData.gross.toLocaleString("en-IN")}</strong>
+                    </div>
+                  </div>
+
+                  {/* Recent Invoices Preview */}
+                  <div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.75rem" }}>
+                      <div style={{ fontSize: "0.72rem", fontWeight: "bold", textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--a-muted)" }}>
+                        Recent Invoices ({modalData.invoices.length})
+                      </div>
+                      {modalData.invoices.length > 5 && (
+                        <button 
+                          className="tbl-btn" 
+                          style={{ padding: "0.25rem 0.5rem", fontSize: "0.65rem" }}
+                          onClick={() => setExpandInvoices(true)}
+                        >
+                          Expand All
+                        </button>
+                      )}
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                      {modalData.invoices.slice(0, 5).map((inv) => (
+                        <div key={inv.id} style={{ display: "flex", justifyContent: "space-between", fontSize: "0.72rem", padding: "0.4rem 0.6rem", background: "rgba(255,255,255,0.01)", border: "1px solid var(--a-border)" }}>
+                          <span>
+                            <strong style={{ marginRight: 6 }}>{inv.invoice_number}</strong>
+                            {inv.client_name}
+                          </span>
+                          <strong>Rs {inv.total.toLocaleString("en-IN")}</strong>
+                        </div>
+                      ))}
+                      {!modalData.invoices.length && (
+                        <div style={{ fontSize: "0.7rem", color: "var(--a-faint)", textAlign: "center", padding: "1.5rem" }}>
+                          No invoices recorded for this period.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                /* Expanded All Invoices List */
+                <div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
+                    <div style={{ fontSize: "0.75rem", fontWeight: "bold", textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--a-muted)" }}>
+                      All Invoices contributing to {revenueModal} revenue ({modalData.invoices.length})
+                    </div>
+                    <button 
+                      className="tbl-btn" 
+                      style={{ padding: "0.25rem 0.5rem", fontSize: "0.65rem" }}
+                      onClick={() => setExpandInvoices(false)}
+                    >
+                      Show Summary
+                    </button>
+                  </div>
+                  <div style={{ overflowX: "auto" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.72rem" }}>
+                      <thead>
+                        <tr style={{ borderBottom: "1px solid var(--a-border)", background: "rgba(255,255,255,0.02)" }}>
+                          <th style={{ textAlign: "left", padding: "8px" }}>Invoice #</th>
+                          <th style={{ textAlign: "left", padding: "8px" }}>Client</th>
+                          <th style={{ textAlign: "left", padding: "8px" }}>Date</th>
+                          <th style={{ textAlign: "left", padding: "8px" }}>Payment</th>
+                          <th style={{ textAlign: "right", padding: "8px" }}>Amount</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {modalData.invoices.map((inv) => (
+                          <tr key={inv.id} style={{ borderBottom: "1px solid var(--a-border)" }}>
+                            <td style={{ padding: "8px", fontWeight: "600" }}>{inv.invoice_number}</td>
+                            <td style={{ padding: "8px" }}>
+                              <div>{inv.client_name}</div>
+                              <div style={{ fontSize: "0.65rem", color: "var(--a-muted)" }}>{inv.mobile}</div>
+                            </td>
+                            <td style={{ padding: "8px" }}>{new Date(inv.billing_at).toLocaleDateString("en-IN")}</td>
+                            <td style={{ padding: "8px" }}>{inv.payment_method}</td>
+                            <td style={{ padding: "8px", textAlign: "right", fontWeight: "bold", color: "var(--gold)" }}>
+                              Rs {inv.total.toLocaleString("en-IN")}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+            
+            <div className="modal-footer">
+              <button type="button" className="btn-add" onClick={() => setRevenueModal(null)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

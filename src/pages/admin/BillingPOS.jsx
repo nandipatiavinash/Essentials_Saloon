@@ -16,12 +16,15 @@ const emptyBill = () => ({
   membership_tier: "Member",
   membership_id: "",
   membership_end: "",
+  is_member_signup: false,
   items: [],
   discount: 0,
   tip: 0,
   tax_enabled: true,
   tax_rate: 5,
   payment_method: "Cash",
+  hybrid_cash: 0,
+  hybrid_upi: 0,
   transaction_id: "",
   notes: "",
   staff_name: "",
@@ -47,6 +50,21 @@ export default function BillingPOS() {
   const activeServices = useMemo(() => (services || []).filter((svc) => svc.active), [services]);
   const activeInventory = useMemo(() => (inventory || []).filter(item => Number(item.stock_qty) > 0), [inventory]);
   const totals = useMemo(() => calculateInvoiceTotals(bill), [bill]);
+
+  useEffect(() => {
+    if (bill.payment_method === "Cash + UPI") {
+      setBill((prev) => {
+        const cash = Number(prev.hybrid_cash || 0);
+        const total = totals.total;
+        const upi = Math.max(0, total - cash);
+        return {
+          ...prev,
+          hybrid_cash: cash > total ? total : cash,
+          hybrid_upi: upi
+        };
+      });
+    }
+  }, [totals.total, bill.payment_method]);
 
   // Use a ref so handleViewInvoice (defined below) can be called from useEffect without hoisting issues
   const handleViewInvoiceRef = useRef(null);
@@ -200,7 +218,15 @@ export default function BillingPOS() {
     if (missingItemStaff) { toast.error("Please select a staff member for all items"); return; }
     setSaving(true);
     try {
-      const saved = await saveInvoice({ ...bill, billing_at: new Date(bill.billing_at).toISOString() });
+      let transactionId = bill.transaction_id || null;
+      if (bill.payment_method === "Cash + UPI") {
+        transactionId = `cash:${bill.hybrid_cash || 0}|upi:${bill.hybrid_upi || 0}`;
+      }
+      const saved = await saveInvoice({
+        ...bill,
+        transaction_id: transactionId,
+        billing_at: new Date(bill.billing_at).toISOString()
+      });
       setInvoice(saved);
       setInvoiceItems(bill.items.map((item) => ({ ...item, total: Number(item.quantity || 1) * Number(item.price || 0) })));
       // Update bill id/invoice_number but keep data visible
@@ -315,7 +341,19 @@ export default function BillingPOS() {
             <tr><td><b>Invoice #:</b> ${invoiceData.invoice_number}</td></tr>
             <tr><td><b>Client:</b> ${invoiceData.client_name} (${invoiceData.mobile})</td></tr>
             ${invoiceData.staff_name ? `<tr><td><b>Stylist:</b> ${invoiceData.staff_name}</td></tr>` : ""}
-            ${invoiceData.payment_method ? `<tr><td><b>Payment:</b> ${invoiceData.payment_method}</td></tr>` : ""}
+            ${invoiceData.payment_method ? `<tr><td><b>Payment:</b> ${
+              invoiceData.payment_method === "Cash + UPI" && invoiceData.transaction_id?.includes("cash:") ? (
+                (() => {
+                  const parts = invoiceData.transaction_id.split("|");
+                  let c = 0, u = 0;
+                  parts.forEach(p => {
+                    if (p.startsWith("cash:")) c = p.replace("cash:", "");
+                    if (p.startsWith("upi:")) u = p.replace("upi:", "");
+                  });
+                  return `Cash + UPI (Cash: Rs ${c}, UPI: Rs ${u})`;
+                })()
+              ) : invoiceData.payment_method
+            }</td></tr>` : ""}
           </table>
           
           <div class="divider"></div>
@@ -467,7 +505,7 @@ export default function BillingPOS() {
                 </div>
               </div>
             </div>
-            {bill.is_member && (
+            {bill.is_member ? (
               <div style={{ marginTop: "0.75rem", padding: "0.75rem 1rem", background: "rgba(201,185,154,0.08)", border: "1px solid rgba(201,185,154,0.3)", color: "#c9b99a", fontSize: "0.72rem", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <div>
                   <strong>★ Active Member</strong>
@@ -476,6 +514,60 @@ export default function BillingPOS() {
                 {bill.membership_end && (
                   <div>Expires: {new Date(bill.membership_end).toLocaleDateString("en-IN")} <span style={{ marginLeft: "8px", fontWeight: "bold" }}>({getDaysRemaining(bill.membership_end)} days left)</span></div>
                 )}
+              </div>
+            ) : (
+              <div style={{ marginTop: "0.75rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <input 
+                  type="checkbox" 
+                  id="add-membership-toggle" 
+                  checked={bill.is_member_signup || false} 
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    setBill((current) => {
+                      let updatedItems = current.items.map(item => {
+                        if (item.item_type === "product" || item.item_type === "membership") return item;
+                        const svc = activeServices.find(s => String(s.id) === String(item.service_id));
+                        if (svc && checked && svc.member_price != null && svc.member_price > 0) {
+                          return { ...item, price: svc.member_price };
+                        }
+                        if (svc && !checked) {
+                          return { ...item, price: Number(svc.price_from || 0) };
+                        }
+                        return item;
+                      });
+
+                      if (checked) {
+                        const hasMem = updatedItems.some(item => item.item_type === "membership");
+                        if (!hasMem) {
+                          updatedItems = [
+                            ...updatedItems,
+                            {
+                              item_type: "membership",
+                              service_name: "Membership Signup",
+                              quantity: 1,
+                              price: 1000,
+                              staff_name: current.staff_name || "",
+                            }
+                          ];
+                        }
+                      } else {
+                        updatedItems = updatedItems.filter(item => item.item_type !== "membership");
+                      }
+
+                      return {
+                        ...current,
+                        is_member: checked,
+                        is_member_signup: checked,
+                        membership_tier: checked ? "Member" : "Regular",
+                        items: updatedItems,
+                      };
+                    });
+                  }}
+                  style={{ accentColor: "var(--gold)", width: "16px", height: "16px", cursor: "pointer" }}
+                />
+                <label htmlFor="add-membership-toggle" style={{ fontSize: "0.75rem", color: "var(--gold)", cursor: "pointer", fontWeight: 600 }}>
+                  ★ Add Membership directly (Apply member pricing immediately)
+                </label>
               </div>
             )}
             <div className="form-row" style={{ marginTop: "1rem" }}>
@@ -574,15 +666,78 @@ export default function BillingPOS() {
             <div className="form-row">
               <div className="form-group">
                 <label className="form-label">Payment Method</label>
-                <select className="form-input" value={bill.payment_method} onChange={(e) => setBill({ ...bill, payment_method: e.target.value })}>
-                  <option>Cash</option><option>UPI</option><option>Card</option><option>Bank Transfer</option>
+                <select 
+                  className="form-input" 
+                  value={bill.payment_method} 
+                  onChange={(e) => {
+                    const method = e.target.value;
+                    setBill((prev) => {
+                      const updated = { ...prev, payment_method: method };
+                      if (method === "Cash + UPI") {
+                        updated.hybrid_cash = totals.total;
+                        updated.hybrid_upi = 0;
+                      }
+                      return updated;
+                    });
+                  }}
+                >
+                  <option value="Cash">Cash</option>
+                  <option value="UPI">UPI</option>
+                  <option value="Card">Card</option>
+                  <option value="Cash + UPI">Cash + UPI</option>
                 </select>
               </div>
               <div className="form-group">
                 <label className="form-label">Transaction ID</label>
-                <input className="form-input" value={bill.transaction_id} onChange={(e) => setBill({ ...bill, transaction_id: e.target.value })} />
+                <input 
+                  className="form-input" 
+                  value={bill.transaction_id} 
+                  onChange={(e) => setBill({ ...bill, transaction_id: e.target.value })} 
+                  disabled={bill.payment_method === "Cash + UPI"}
+                  placeholder={bill.payment_method === "Cash + UPI" ? "Managed by split inputs" : "Txn / Ref number"}
+                />
               </div>
             </div>
+            {bill.payment_method === "Cash + UPI" && (
+              <div className="form-row" style={{ marginTop: "0.5rem", background: "rgba(255,255,255,0.02)", padding: "1rem", border: "1px solid var(--a-border)", display: "flex", gap: "1rem" }}>
+                <div className="form-group" style={{ flex: 1 }}>
+                  <label className="form-label" style={{ color: "var(--gold)" }}>Cash Portion (Rs)</label>
+                  <input 
+                    type="number" 
+                    min="0" 
+                    max={totals.total}
+                    className="form-input" 
+                    value={bill.hybrid_cash || 0} 
+                    onChange={(e) => {
+                      const cashVal = Math.min(totals.total, Math.max(0, Number(e.target.value) || 0));
+                      setBill(prev => ({
+                        ...prev,
+                        hybrid_cash: cashVal,
+                        hybrid_upi: Math.max(0, totals.total - cashVal)
+                      }));
+                    }}
+                  />
+                </div>
+                <div className="form-group" style={{ flex: 1 }}>
+                  <label className="form-label" style={{ color: "var(--gold)" }}>UPI Portion (Rs)</label>
+                  <input 
+                    type="number" 
+                    min="0" 
+                    max={totals.total}
+                    className="form-input" 
+                    value={bill.hybrid_upi || 0} 
+                    onChange={(e) => {
+                      const upiVal = Math.min(totals.total, Math.max(0, Number(e.target.value) || 0));
+                      setBill(prev => ({
+                        ...prev,
+                        hybrid_upi: upiVal,
+                        hybrid_cash: Math.max(0, totals.total - upiVal)
+                      }));
+                    }}
+                  />
+                </div>
+              </div>
+            )}
             <div className="form-group">
               <label className="form-label">Notes</label>
               <textarea className="form-input" rows="2" value={bill.notes} onChange={(e) => setBill({ ...bill, notes: e.target.value })}></textarea>
@@ -689,7 +844,19 @@ export default function BillingPOS() {
                   {viewInvoiceData.invoice.payment_method && (
                     <div style={{ display: "flex", justifyContent: "space-between" }}>
                       <span style={{ color: "#666" }}>Payment Method:</span>
-                      <strong>{viewInvoiceData.invoice.payment_method}</strong>
+                      <strong>
+                        {viewInvoiceData.invoice.payment_method === "Cash + UPI" && viewInvoiceData.invoice.transaction_id?.includes("cash:") ? (
+                          (() => {
+                            const parts = viewInvoiceData.invoice.transaction_id.split("|");
+                            let c = 0, u = 0;
+                            parts.forEach(p => {
+                              if (p.startsWith("cash:")) c = p.replace("cash:", "");
+                              if (p.startsWith("upi:")) u = p.replace("upi:", "");
+                            });
+                            return `Cash + UPI (Cash: Rs ${c}, UPI: Rs ${u})`;
+                          })()
+                        ) : viewInvoiceData.invoice.payment_method}
+                      </strong>
                     </div>
                   )}
                 </div>

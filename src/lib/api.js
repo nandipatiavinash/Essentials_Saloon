@@ -223,9 +223,43 @@ export async function saveInvoice(payload) {
   const totals = calculateInvoiceTotals(payload);
   const { data: userRes } = await supabase.auth.getUser();
 
+  const { data: existingCust } = await t("customers")
+    .select("id, is_member, membership_id, membership_tier, membership_start, membership_end")
+    .eq("mobile", mobile)
+    .maybeSingle();
+
+  let isMember = !!payload.is_member;
+  let mId = payload.membership_id;
+  let mTier = payload.membership_tier;
+  let mStart = payload.membership_start;
+  let mEnd = payload.membership_end;
+
+  if (existingCust?.is_member && !payload.is_member_signup && !payload.is_member) {
+    isMember = true;
+    mId = existingCust.membership_id;
+    mTier = existingCust.membership_tier;
+    mStart = existingCust.membership_start;
+    mEnd = existingCust.membership_end;
+  }
+
+  if (isMember) {
+    if (!mId) {
+      const year = new Date(payload.billing_at || new Date()).getFullYear();
+      const rand = Math.floor(10000 + Math.random() * 90000);
+      mId = `MEM-${year}-${rand}`;
+    }
+    if (!mTier || mTier === "Regular") mTier = "Member";
+    if (!mStart) mStart = new Date(payload.billing_at || new Date()).toISOString().slice(0, 10);
+    if (!mEnd) {
+      const nextYear = new Date(payload.billing_at || new Date());
+      nextYear.setFullYear(nextYear.getFullYear() + 1);
+      mEnd = nextYear.toISOString().slice(0, 10);
+    }
+  }
+
   const { data: customer, error: customerError } = await t("customers")
     .upsert({
-      id: payload.customer_id || undefined,
+      id: payload.customer_id || existingCust?.id || undefined,
       name: payload.client_name.trim(),
       mobile,
       notes: payload.customer_notes || null,
@@ -233,6 +267,11 @@ export async function saveInvoice(payload) {
       total_spend: totals.total,
       visit_count: 1,
       preferred_services: payload.items.map((item) => item.service_name).filter(Boolean),
+      is_member: isMember,
+      membership_id: isMember ? mId : null,
+      membership_tier: isMember ? mTier : "Regular",
+      membership_start: isMember ? mStart : null,
+      membership_end: isMember ? mEnd : null,
     }, { onConflict: "mobile" })
     .select()
     .single();
@@ -438,16 +477,20 @@ function normBooking(row) {
 
 export function calculateInvoiceTotals(payload) {
   const items = payload.items ?? [];
-  // Only service items attract GST; product items are GST-exempt
+  // Only service items attract GST; product and membership items are GST-exempt
   const serviceSubtotal = items.reduce((sum, item) => {
-    if (item.item_type === "product") return sum;
+    if (item.item_type === "product" || item.item_type === "membership") return sum;
     return sum + Number(item.quantity || 1) * Number(item.price || 0);
   }, 0);
   const productSubtotal = items.reduce((sum, item) => {
     if (item.item_type !== "product") return sum;
     return sum + Number(item.quantity || 1) * Number(item.price || 0);
   }, 0);
-  const subtotal = serviceSubtotal + productSubtotal;
+  const membershipSubtotal = items.reduce((sum, item) => {
+    if (item.item_type !== "membership") return sum;
+    return sum + Number(item.quantity || 1) * Number(item.price || 0);
+  }, 0);
+  const subtotal = serviceSubtotal + productSubtotal + membershipSubtotal;
   const discount = Number(payload.discount || 0);
   // Discount applied proportionally — only service portion is taxable
   const serviceAfterDiscount = Math.max(serviceSubtotal - discount, 0);
@@ -458,11 +501,12 @@ export function calculateInvoiceTotals(payload) {
     subtotal: roundMoney(subtotal),
     serviceSubtotal: roundMoney(serviceSubtotal),
     productSubtotal: roundMoney(productSubtotal),
+    membershipSubtotal: roundMoney(membershipSubtotal),
     discount: roundMoney(discount),
     taxable: roundMoney(taxable),
     tax: roundMoney(tax),
     tip: roundMoney(tip),
-    total: roundMoney(taxable + tax + productSubtotal + tip),
+    total: roundMoney(taxable + tax + productSubtotal + membershipSubtotal + tip),
   };
 }
 
@@ -483,7 +527,30 @@ export function format12HourTime(timeStr) {
 export function buildAnalytics(invoices = []) {
   const paid = invoices.filter((invoice) => invoice.status !== "void");
   const revenue = paid.reduce((sum, invoice) => sum + Number(invoice.total || 0), 0);
-  const paymentBreakdown = groupSum(paid, "payment_method", "total");
+  
+  const paymentBreakdown = {};
+  paid.forEach((invoice) => {
+    const payment = invoice.payment_method || "Unknown";
+    const total = Number(invoice.total || 0);
+    if (payment === "Cash + UPI" && invoice.transaction_id && invoice.transaction_id.includes("cash:")) {
+      const parts = invoice.transaction_id.split("|");
+      let cashAmt = 0;
+      let upiAmt = 0;
+      parts.forEach(p => {
+        if (p.startsWith("cash:")) cashAmt = Number(p.replace("cash:", "")) || 0;
+        if (p.startsWith("upi:")) upiAmt = Number(p.replace("upi:", "")) || 0;
+      });
+      paymentBreakdown["Cash"] = (paymentBreakdown["Cash"] || 0) + cashAmt;
+      paymentBreakdown["UPI"] = (paymentBreakdown["UPI"] || 0) + upiAmt;
+    } else {
+      paymentBreakdown[payment] = (paymentBreakdown[payment] || 0) + total;
+    }
+  });
+  
+  Object.keys(paymentBreakdown).forEach(k => {
+    paymentBreakdown[k] = roundMoney(paymentBreakdown[k]);
+  });
+
   const byDay = {};
   const byMonth = {};
   const byHour = {};
