@@ -20,14 +20,14 @@ const contentNav = [
   { id: "categories", path: "/categories", icon: "📂", label: "Categories" },
   { id: "offers", path: "/offers", icon: "🏷️", label: "Offers" },
   { id: "gallery", path: "/gallery", icon: "🖼️", label: "Gallery" },
-  { id: "bookings", path: "/bookings", icon: "📅", label: "Bookings" },
-  { id: "inventory", path: "/inventory", icon: "📦", label: "Inventory" },
+  { id: "settings", path: "/settings", icon: "⚙️", label: "Settings" },
 ];
 
 const systemNav = [
   { id: "analytics", path: "/analytics", icon: "📈", label: "Analytics" },
   { id: "reports", path: "/reports", icon: "💬", label: "Reports" },
-  { id: "settings", path: "/settings", icon: "⚙️", label: "Settings" },
+  { id: "bookings", path: "/bookings", icon: "📅", label: "Bookings" },
+  { id: "inventory", path: "/inventory", icon: "📦", label: "Inventory" },
 ];
 
 const navItems = [...mainNav, ...contentNav, ...systemNav];
