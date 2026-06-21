@@ -172,24 +172,24 @@ export default function ReportsManager() {
             body {
               font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
               padding: 20mm;
-              color: #333;
+              color: #000;
               line-height: 1.4;
             }
             .header {
-              border-bottom: 2px solid #c9b99a;
+              border-bottom: 2px solid #000;
               padding-bottom: 20px;
               margin-bottom: 80px;
             }
             .header h1 {
               font-size: 24px;
               margin: 0;
-              color: #1a1a1a;
+              color: #000;
               text-transform: uppercase;
               letter-spacing: 1px;
             }
             .header p {
               margin: 5px 0 0 0;
-              color: #666;
+              color: #000;
               font-size: 14px;
             }
             .section {
@@ -198,8 +198,8 @@ export default function ReportsManager() {
             .section-title {
               font-size: 16px;
               font-weight: 700;
-              color: #1a1a1a;
-              border-bottom: 1px solid #ddd;
+              color: #000;
+              border-bottom: 1px solid #000;
               padding-bottom: 5px;
               margin-bottom: 12px;
               text-transform: uppercase;
@@ -211,14 +211,15 @@ export default function ReportsManager() {
               font-size: 12px;
             }
             th, td {
-              border: 1px solid #eee;
+              border: 1px solid #000;
               padding: 10px 8px;
               text-align: left;
+              color: #000;
             }
             th {
-              background-color: #f9f9f9;
+              background-color: #fff;
               font-weight: 600;
-              color: #555;
+              color: #000;
             }
             .text-right {
               text-align: right;
@@ -230,17 +231,19 @@ export default function ReportsManager() {
               font-weight: bold;
             }
             .totals-row td {
-              background-color: #fcfbf8;
-              border-top: 2px solid #c9b99a;
+              background-color: #fff;
+              border-top: 2px solid #000;
               font-weight: bold;
+              color: #000;
             }
             .summary-box {
-              background: #fafaf8;
-              border: 1px solid #eadecc;
+              background: #fff;
+              border: 1px solid #000;
               border-radius: 4px;
               padding: 15px;
               margin-top: 10px;
               font-size: 13px;
+              color: #000;
             }
             .summary-box table {
               margin-top: 0;
@@ -249,40 +252,43 @@ export default function ReportsManager() {
             .summary-box table td {
               border: none;
               padding: 4px 0;
+              color: #000;
             }
             .badge {
               display: inline-block;
-              padding: 2px 6px;
-              border-radius: 3px;
               font-size: 10px;
               font-weight: bold;
               text-transform: uppercase;
+              color: #000;
             }
-            .badge-present { background-color: #e6f4ea; color: #137333; }
-            .badge-absent { background-color: #fce8e6; color: #c5221f; }
-            .badge-late { background-color: #fef7e0; color: #b06000; }
+            .badge-present, .badge-absent, .badge-late {
+              background: none !important;
+              color: #000 !important;
+              border: none !important;
+              padding: 0 !important;
+            }
             .footer {
               margin-top: 50px;
-              border-top: 1px solid #eee;
+              border-top: 1px solid #000;
               padding-top: 15px;
               font-size: 11px;
-              color: #888;
+              color: #000;
               text-align: center;
             }
           </style>
         </head>
         <body>
-          <div class="header" style="text-align: center; margin-bottom: 80px; border-bottom: 2px solid #c9b99a; padding-bottom: 20px;">
+          <div class="header" style="text-align: center; margin-bottom: 80px; border-bottom: 2px solid #000; padding-bottom: 20px;">
             <div style="font-size: 32px; font-weight: 800; letter-spacing: 4px; margin: 0; color: #000; font-family: 'Montserrat', sans-serif; text-transform: uppercase;">TONI & GUY</div>
-            <div style="font-size: 14px; font-weight: 400; letter-spacing: 6px; margin: 5px 0 0 0; color: #c9b99a; font-family: 'Montserrat', sans-serif; text-transform: uppercase;">Essensuals Gorantla</div>
-            <p style="margin: 8px 0 0 0; font-size: 11px; color: #666; font-family: sans-serif; letter-spacing: 1px;">
+            <div style="font-size: 14px; font-weight: 400; letter-spacing: 6px; margin: 5px 0 0 0; color: #000; font-family: 'Montserrat', sans-serif; text-transform: uppercase;">Essensuals Gorantla</div>
+            <p style="margin: 8px 0 0 0; font-size: 11px; color: #000; font-family: sans-serif; letter-spacing: 1px;">
               Gorantla, Guntur, Andhra Pradesh
             </p>
-            <div style="width: 80px; height: 2px; background: #c9b99a; margin: 15px auto 0 auto;"></div>
-            <p style="margin: 15px 0 0 0; color: #333; font-size: 13px; font-family: sans-serif; font-weight: bold; letter-spacing: 1px; text-transform: uppercase;">
+            <div style="width: 80px; height: 2px; background: #000; margin: 15px auto 0 auto;"></div>
+            <p style="margin: 15px 0 0 0; color: #000; font-size: 13px; font-family: sans-serif; font-weight: bold; letter-spacing: 1px; text-transform: uppercase;">
               Daily End-Of-Day (EOD) Report
             </p>
-            <p style="margin: 5px 0 0 0; color: #666; font-size: 11px; font-family: sans-serif;">
+            <p style="margin: 5px 0 0 0; color: #000; font-size: 11px; font-family: sans-serif;">
               Date: ${formattedDate}
             </p>
           </div>
@@ -445,8 +451,8 @@ export default function ReportsManager() {
                 <p><strong>Total Catalog Items:</strong> ${(inventory || []).length}</p>
                 <p><strong>Alert Status:</strong> ${
                   data.lowStock.length > 0
-                    ? `<span style="color: #c5221f; font-weight: bold;">${data.lowStock.length} items low on stock</span>`
-                    : `<span style="color: #137333; font-weight: bold;">All products normal (No alerts)</span>`
+                    ? `<span style="color: #000; font-weight: bold;">${data.lowStock.length} items low on stock</span>`
+                    : `<span style="color: #000; font-weight: bold;">All products normal (No alerts)</span>`
                 }</p>
                 ${
                   data.lowStock.length > 0
@@ -546,10 +552,10 @@ export default function ReportsManager() {
                     ? `
                   <table style="width: 100%; border: none;">
                     <tr><td class="bold">Opening Cash:</td><td class="text-right">Rs ${Number(data.register.opening_cash || 0).toLocaleString("en-IN")}</td></tr>
-                    <tr><td class="bold">Expenses:</td><td class="text-right" style="color: #c5221f;">Rs ${Number(data.register.expenses || 0).toLocaleString("en-IN")}</td></tr>
-                    ${data.register.expense_notes ? `<tr><td colspan="2" style="font-size: 10px; color: #666; font-style: italic;">Notes: ${data.register.expense_notes}</td></tr>` : ""}
-                    <tr style="border-top: 1px solid #ddd;"><td class="bold">Closing Cash:</td><td class="text-right bold">Rs ${Number(data.register.closing_cash || 0).toLocaleString("en-IN")}</td></tr>
-                    <tr><td class="bold">Register Status:</td><td class="text-right"><span class="badge" style="background-color: ${data.register.status === "closed" ? "#e6f4ea" : "#fef7e0"}; color: ${data.register.status === "closed" ? "#137333" : "#b06000"};">${data.register.status?.toUpperCase()}</span></td></tr>
+                    <tr><td class="bold">Expenses:</td><td class="text-right" style="color: #000;">Rs ${Number(data.register.expenses || 0).toLocaleString("en-IN")}</td></tr>
+                    ${data.register.expense_notes ? `<tr><td colspan="2" style="font-size: 10px; color: #000; font-style: italic;">Notes: ${data.register.expense_notes}</td></tr>` : ""}
+                    <tr style="border-top: 1px solid #000;"><td class="bold">Closing Cash:</td><td class="text-right bold">Rs ${Number(data.register.closing_cash || 0).toLocaleString("en-IN")}</td></tr>
+                    <tr><td class="bold">Register Status:</td><td class="text-right"><span class="badge" style="color: #000; font-weight: bold;">${data.register.status?.toUpperCase()}</span></td></tr>
                   </table>
                 `
                     : `<p class="text-center" style="margin: 20px 0; color: #888;">No cash register logged for this date.</p>`

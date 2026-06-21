@@ -160,7 +160,7 @@ export default function AdminLayout() {
             </div>
             <div className="topbar-user">
               <div className="topbar-avatar">{userEmail[0]?.toUpperCase() || "A"}</div>
-              <span style={{ fontSize: "0.7rem" }}>{userEmail}</span>
+              <span className="topbar-email" style={{ fontSize: "0.7rem" }}>{userEmail}</span>
               <button className="tbl-btn" onClick={handleLogout}>Sign out</button>
             </div>
           </div>

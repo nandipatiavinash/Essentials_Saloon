@@ -355,7 +355,6 @@ input:checked + .toggle-slider::before{transform:translateX(18px)}
   .stats-grid{grid-template-columns:1fr 1fr}
   .analytics-grid{grid-template-columns:1fr}
   .analytics-grid.wide,.pos-grid,.client-grid,.import-grid,.reports-grid{grid-template-columns:1fr}
-  .invoice-preview{order:-1}
   .pos-item{grid-template-columns:1fr 60px 90px}
   .pos-line-total{text-align:left}
   .pos-item .icon-btn{grid-column:3}
@@ -387,6 +386,16 @@ input:checked + .toggle-slider::before{transform:translateX(18px)}
   }
   .admin-topbar {
     padding: 0 1rem;
+    gap: 0.5rem;
+  }
+  .topbar-email {
+    display: none !important;
+  }
+  .topbar-title {
+    font-size: 1.1rem;
+  }
+  .topbar-user {
+    gap: 0.5rem;
   }
   .pos-item {
     display: flex;

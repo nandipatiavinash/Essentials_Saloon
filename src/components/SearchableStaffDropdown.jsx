@@ -15,10 +15,13 @@ export default function SearchableStaffDropdown({
   // Filter staff by search term
   const activeStaff = (staffList || []).filter(s => s.active);
   const sortedStaff = [...activeStaff].sort((a, b) => (a.name || "").localeCompare(b.name || ""));
-  const filtered = sortedStaff.filter(s => 
-    s.name?.toLowerCase().includes(search.toLowerCase()) ||
-    s.role?.toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = sortedStaff.filter(s => {
+    if (!search || search === value) return true;
+    return (
+      s.name?.toLowerCase().includes(search.toLowerCase()) ||
+      s.role?.toLowerCase().includes(search.toLowerCase())
+    );
+  });
 
   useEffect(() => {
     // Sync search text with selected value
