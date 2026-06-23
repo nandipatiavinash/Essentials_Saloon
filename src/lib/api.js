@@ -522,61 +522,62 @@ function normBooking(row) {
 
 export function calculateInvoiceTotals(payload) {
   const items = payload.items ?? [];
-  const serviceSubtotal = items.reduce((sum, item) => {
-    if (item.item_type === "product" || item.item_type === "membership") return sum;
-    return sum + Number(item.quantity || 1) * Number(item.price || 0);
-  }, 0);
-  const productSubtotal = items.reduce((sum, item) => {
-    if (item.item_type !== "product") return sum;
-    return sum + Number(item.quantity || 1) * Number(item.price || 0);
-  }, 0);
-  const membershipSubtotal = items.reduce((sum, item) => {
-    if (item.item_type !== "membership") return sum;
-    return sum + Number(item.quantity || 1) * Number(item.price || 0);
-  }, 0);
-  const subtotal = serviceSubtotal + productSubtotal + membershipSubtotal;
-
   const discountPct = Number(payload.discount || 0);
   const taxRate = payload.tax_enabled === false ? 0 : Number(payload.tax_rate || 5);
   const taxEnabled = payload.tax_enabled !== false;
 
+  let serviceSubtotal = 0;
+  let productSubtotal = 0;
+  let membershipSubtotal = 0;
+  let totalDiscount = 0;
   let totalTaxable = 0;
   let totalTax = 0;
-  let totalDiscount = 0;
 
   items.forEach(item => {
     const qty = Number(item.quantity || 1);
     const price = Number(item.price || 0);
     const rawTotal = qty * price;
-    const itemDiscount = rawTotal * (discountPct / 100);
-    totalDiscount += itemDiscount;
-    const discountedTotal = rawTotal - itemDiscount;
 
-    if (item.item_type === "product" || item.item_type === "membership") {
+    if (item.item_type === "product") {
+      productSubtotal += rawTotal;
+      const itemDiscount = rawTotal * (discountPct / 100);
+      totalDiscount += itemDiscount;
+      return;
+    }
+    if (item.item_type === "membership") {
+      membershipSubtotal += rawTotal;
+      const itemDiscount = rawTotal * (discountPct / 100);
+      totalDiscount += itemDiscount;
       return;
     }
 
+    // It's a service
+    const isInclusive = item.tax_inclusive !== false;
+    const rawBase = isInclusive ? (rawTotal / 1.05) : rawTotal;
+    serviceSubtotal += rawBase;
+
+    const itemDiscount = rawBase * (discountPct / 100);
+    totalDiscount += itemDiscount;
+
+    const discountedBase = rawBase - itemDiscount;
+
     if (taxEnabled && taxRate > 0) {
-      if (item.tax_inclusive !== false) {
-        const base = discountedTotal / (1 + (taxRate / 100));
-        const tax = discountedTotal - base;
-        totalTaxable += base;
+      if (isInclusive) {
+        const tax = discountedBase * (taxRate / 100);
+        totalTaxable += discountedBase;
         totalTax += tax;
       } else {
-        const base = discountedTotal;
-        const tax = discountedTotal * (taxRate / 100);
+        const base = discountedBase;
+        const tax = discountedBase * (taxRate / 100);
         totalTaxable += base;
         totalTax += tax;
       }
     } else {
-      if (item.tax_inclusive !== false) {
-        const base = discountedTotal / 1.05;
-        totalTaxable += base;
-      } else {
-        totalTaxable += discountedTotal;
-      }
+      totalTaxable += discountedBase;
     }
   });
+
+  const subtotal = serviceSubtotal + productSubtotal + membershipSubtotal;
 
   const productSubtotalDiscounted = items
     .filter(item => item.item_type === "product")
@@ -587,7 +588,9 @@ export function calculateInvoiceTotals(payload) {
     .reduce((sum, item) => sum + (Number(item.quantity || 1) * Number(item.price || 0) * (1 - discountPct / 100)), 0);
 
   const tip = Number(payload.tip || 0);
-  const total = totalTaxable + totalTax + productSubtotalDiscounted + membershipSubtotalDiscounted + tip;
+  const totalBeforeRounding = totalTaxable + totalTax + productSubtotalDiscounted + membershipSubtotalDiscounted + tip;
+  const roundedTotal = Math.round(totalBeforeRounding);
+  const roundOff = roundedTotal - totalBeforeRounding;
 
   return {
     subtotal: roundMoney(subtotal),
@@ -598,7 +601,8 @@ export function calculateInvoiceTotals(payload) {
     taxable: roundMoney(totalTaxable),
     tax: roundMoney(totalTax),
     tip: roundMoney(tip),
-    total: roundMoney(total),
+    roundOff: roundMoney(roundOff),
+    total: roundMoney(roundedTotal),
   };
 }
 

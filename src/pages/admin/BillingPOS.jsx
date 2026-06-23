@@ -445,6 +445,15 @@ export default function BillingPOS() {
             ${invoiceData.discount ? `<tr><td>Discount</td><td class="text-right">-Rs ${Number(invoiceData.discount).toFixed(2)}</td></tr>` : ""}
             ${invoiceData.tax ? `<tr><td>GST (${invoiceData.tax_rate || 5}%)</td><td class="text-right">Rs ${Number(invoiceData.tax).toFixed(2)}</td></tr>` : ""}
             ${invoiceData.tip ? `<tr><td>Stylist Tip</td><td class="text-right">Rs ${Number(invoiceData.tip).toFixed(2)}</td></tr>` : ""}
+            ${(() => {
+              const sub = Number(invoiceData.subtotal || 0);
+              const disc = Number(invoiceData.discount || 0);
+              const tax = Number(invoiceData.tax || 0);
+              const tip = Number(invoiceData.tip || 0);
+              const tot = Number(invoiceData.total || 0);
+              const roundOff = tot - (sub - disc + tax + tip);
+              return Math.abs(roundOff) > 0.01 ? `<tr><td>Round Off</td><td class="text-right">${roundOff > 0 ? "+" : ""}Rs ${roundOff.toFixed(2)}</td></tr>` : "";
+            })()}
             <tr class="grand-total">
               <td class="bold">GRAND TOTAL</td>
               <td class="text-right bold">Rs ${Number(invoiceData.total).toFixed(2)}</td>
@@ -754,6 +763,17 @@ export default function BillingPOS() {
                     <div style={{ marginTop: "0.25rem", width: "160px" }}>
                       <SearchableStaffDropdown staffList={presentStaff} value={item.staff_name} onChange={(val) => updateItem(index, { staff_name: val })} placeholder="Select Staff" isInvalid={attemptedSubmit && !item.staff_name} />
                     </div>
+                    {item.item_type === "service" && (
+                      <label style={{ display: "flex", alignItems: "center", gap: "0.3rem", marginTop: "0.4rem", fontSize: "0.72rem", cursor: "pointer", color: "var(--gold)", userSelect: "none" }}>
+                        <input 
+                          type="checkbox" 
+                          checked={item.tax_inclusive !== false} 
+                          onChange={(e) => updateItem(index, { tax_inclusive: e.target.checked })} 
+                          style={{ width: "13px", height: "13px", cursor: "pointer", accentColor: "var(--gold)" }} 
+                        />
+                        GST Inclusive
+                      </label>
+                    )}
                   </div>
                   <input className="mini-input qty" type="number" min="1" value={item.quantity} onChange={(e) => updateItem(index, { quantity: e.target.value })} />
                   <input className="mini-input price" type="number" min="0" value={item.price} onChange={(e) => updateItem(index, { price: e.target.value })} />
@@ -903,6 +923,12 @@ export default function BillingPOS() {
             {totals.serviceSubtotal > 0 && <div><span>Net Services (Before GST)</span><strong>Rs {totals.taxable.toLocaleString("en-IN")}</strong></div>}
             <div><span>GST ({bill.tax_enabled ? bill.tax_rate : 0}%) <span style={{ fontSize: "0.6rem", opacity: 0.6 }}>on services</span></span><strong>Rs {totals.tax.toLocaleString("en-IN")}</strong></div>
             {totals.tip > 0 && <div><span>Tip</span><strong>Rs {totals.tip.toLocaleString("en-IN")}</strong></div>}
+            {totals.roundOff !== 0 && (
+              <div>
+                <span>Round Off</span>
+                <strong>{totals.roundOff > 0 ? "+" : ""}Rs {totals.roundOff.toFixed(2)}</strong>
+              </div>
+            )}
             <div className="grand"><span>Grand Total</span><strong>Rs {totals.total.toLocaleString("en-IN")}</strong></div>
           </div>
 
@@ -1025,6 +1051,20 @@ export default function BillingPOS() {
                       <strong>Rs {Number(viewInvoiceData.invoice.tip).toLocaleString("en-IN")}</strong>
                     </div>
                   )}
+                  {(() => {
+                    const sub = Number(viewInvoiceData.invoice.subtotal || 0);
+                    const disc = Number(viewInvoiceData.invoice.discount || 0);
+                    const tax = Number(viewInvoiceData.invoice.tax || 0);
+                    const tip = Number(viewInvoiceData.invoice.tip || 0);
+                    const tot = Number(viewInvoiceData.invoice.total || 0);
+                    const roundOff = tot - (sub - disc + tax + tip);
+                    return Math.abs(roundOff) > 0.01 ? (
+                      <div style={{ display: "flex", justifyContent: "space-between" }}>
+                        <span>Round Off</span>
+                        <strong>{roundOff > 0 ? "+" : ""}Rs {roundOff.toFixed(2)}</strong>
+                      </div>
+                    ) : null;
+                  })()}
                   <div className="grand" style={{ borderTop: "1px solid var(--a-border)", paddingTop: "0.5rem", marginTop: "0.2rem", fontSize: "0.95rem", display: "flex", justifyContent: "space-between" }}>
                     <span style={{ fontWeight: "bold" }}>Grand Total</span>
                     <strong style={{ color: "var(--a-text)" }}>Rs {Number(viewInvoiceData.invoice.total).toLocaleString("en-IN")}</strong>
