@@ -49,7 +49,7 @@ export async function fetchPublicData() {
 
 // ─── Fetch all admin data ─────────────────────────────────────────────────────
 export async function fetchAdminData() {
-  const [cats, svcs, offs, gal, settRes, bkgs, invoices, customers, transactions, reportLogs, staff, attendance, inventory, cashRegister] = await Promise.all([
+  const [cats, svcs, offs, gal, settRes, bkgs, invoices, customers, transactions, reportLogs, staff, attendance, inventory, cashRegister, attendanceLogs] = await Promise.all([
     t("categories").select("*").order("id"),
     t("services").select("*").order("id"),
     t("offers").select("*").order("id"),
@@ -64,6 +64,7 @@ export async function fetchAdminData() {
     optional(t("attendance").select("*").order("date", { ascending: false }), []),
     optional(t("inventory").select("*").order("name"), []),
     optional(t("cash_register").select("*").order("date", { ascending: false }).limit(60), []),
+    optional(t("attendance_logs").select("*").order("created_at", { ascending: false }).limit(200), []),
   ]);
   const errs = [cats, svcs, offs, gal, settRes, bkgs].map((r) => r.error).filter(Boolean);
   if (errs.length) throw errs[0];
@@ -82,6 +83,7 @@ export async function fetchAdminData() {
     attendance: attendance ?? [],
     inventory: inventory ?? [],
     cashRegister: cashRegister ?? [],
+    attendanceActivityLogs: attendanceLogs ?? [],
   };
 }
 
@@ -508,9 +510,13 @@ export function calculateInvoiceTotals(payload) {
     return sum + Number(item.quantity || 1) * Number(item.price || 0);
   }, 0);
   const subtotal = serviceSubtotal + productSubtotal + membershipSubtotal;
-  const discount = Number(payload.discount || 0);
-  // Discount applied proportionally — only service portion is taxable
-  const serviceAfterDiscount = Math.max(serviceSubtotal - discount, 0);
+  
+  // payload.discount is treated as a percentage (from 0 to 100)
+  const discountPct = Number(payload.discount || 0);
+  const discount = subtotal * (discountPct / 100);
+  const serviceDiscount = serviceSubtotal * (discountPct / 100);
+  const serviceAfterDiscount = Math.max(serviceSubtotal - serviceDiscount, 0);
+  
   const taxable = serviceAfterDiscount;
   const tax = payload.tax_enabled === false ? 0 : taxable * (Number(payload.tax_rate || 0) / 100);
   const tip = Number(payload.tip || 0);
@@ -735,6 +741,19 @@ export async function saveAttendance(rows) {
   if (error) throw error;
   return data;
 }
+
+export async function createAttendanceLog(log) {
+  const { data, error } = await t("attendance_logs").insert({
+    staff_id: log.staff_id,
+    date: log.date || new Date().toISOString().slice(0, 10),
+    action_type: log.action_type,
+    details: log.details,
+    timestamp: new Date().toISOString()
+  }).select();
+  if (error) throw error;
+  return data;
+}
+
 
 // ─── Inventory CRUD ───────────────────────────────────────────────────────────
 export async function createInventoryItem(data) {

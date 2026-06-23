@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Search, UserCheck, Calendar, Clock, Plus, Trash2, Award, ClipboardList, TrendingUp } from "lucide-react";
 import { useAdmin } from "../../layouts/AdminLayout";
-import { createStaff, updateStaff, deleteStaff, saveAttendance, format12HourTime } from "../../lib/api";
+import { createStaff, updateStaff, deleteStaff, saveAttendance, format12HourTime, createAttendanceLog } from "../../lib/api";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 
@@ -66,11 +66,12 @@ function TimePickerAMPM({ value, onChange, disabled }) {
 
 
 export default function AttendanceManager() {
-  const { staff, attendance, invoices, reload } = useAdmin();
+  const { staff, attendance, attendanceActivityLogs, invoices, reload } = useAdmin();
   const navigate = useNavigate();
   const [subView, setSubView] = useState("attendance"); // attendance | roster | performance
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [staffModal, setStaffModal] = useState(null); // null | {} = add | {id...} = edit
+  const [adjustModal, setAdjustModal] = useState(null); // null | { staff_id, date, check_in, check_out, staff_name }
   const [saving, setSaving] = useState(false);
 
   // Performance date range filters
@@ -96,8 +97,8 @@ export default function AttendanceManager() {
         staff_id: s.id,
         date: date,
         status: match?.status || "present",
-        check_in: match?.check_in || "09:00",
-        check_out: match?.check_out || "21:00",
+        check_in: match?.check_in || null,
+        check_out: match?.check_out || null,
         notes: match?.notes || "",
       };
     });
@@ -140,24 +141,129 @@ export default function AttendanceManager() {
   const logCheckIn = async (staffId) => {
     const now = new Date();
     const time24 = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+    const currentLog = attendanceLogs[staffId] || { staff_id: staffId, date: date, notes: "", status: "present", check_in: null, check_out: null };
     const log = {
-      ...(attendanceLogs[staffId] || { staff_id: staffId, date: date, notes: "" }),
+      ...currentLog,
       check_in: time24,
       status: "present"
     };
     setAttendanceLogs(prev => ({ ...prev, [staffId]: log }));
     await handleSingleSave(staffId, log);
+
+    // Create activity log
+    const staffName = (staff || []).find(st => st.id === staffId)?.name || "Staff";
+    try {
+      await createAttendanceLog({
+        staff_id: staffId,
+        date: date,
+        action_type: "check_in",
+        details: `${staffName} checked in at ${format12HourTime(time24)}`
+      });
+    } catch (err) {
+      console.error("Log error:", err);
+    }
+    reload();
   };
 
   const logCheckOut = async (staffId) => {
+    const log = attendanceLogs[staffId] || { staff_id: staffId, date: date, notes: "", status: "present", check_in: null, check_out: null };
     const now = new Date();
     const time24 = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
-    const log = {
-      ...(attendanceLogs[staffId] || { staff_id: staffId, date: date, notes: "", status: "present", check_in: "09:00" }),
+
+    if (log.check_in) {
+      const [inH, inM] = log.check_in.split(":").map(Number);
+      const [outH, outM] = time24.split(":").map(Number);
+      if (outH * 60 + outM <= inH * 60 + inM) {
+        toast.error("Check-out time cannot be earlier than or equal to check-in time.");
+        return;
+      }
+    }
+
+    const updatedLog = {
+      ...log,
       check_out: time24
     };
-    setAttendanceLogs(prev => ({ ...prev, [staffId]: log }));
-    await handleSingleSave(staffId, log);
+    setAttendanceLogs(prev => ({ ...prev, [staffId]: updatedLog }));
+    await handleSingleSave(staffId, updatedLog);
+
+    // Create activity log
+    const staffName = (staff || []).find(st => st.id === staffId)?.name || "Staff";
+    try {
+      await createAttendanceLog({
+        staff_id: staffId,
+        date: date,
+        action_type: "check_out",
+        details: `${staffName} checked out at ${format12HourTime(time24)}`
+      });
+    } catch (err) {
+      console.error("Log error:", err);
+    }
+    reload();
+  };
+
+  const dailyLogs = useMemo(() => {
+    return (attendanceActivityLogs || [])
+      .filter(l => l.date === date)
+      .sort((a, b) => new Date(b.created_at || b.timestamp).getTime() - new Date(a.created_at || a.timestamp).getTime());
+  }, [attendanceActivityLogs, date]);
+
+  const handleOpenAdjustModal = (l) => {
+    const sId = l.staff_id;
+    const logDate = l.date || date;
+    const currentLog = attendanceLogs[sId] || { check_in: null, check_out: null, status: "present" };
+    const sName = (staff || []).find(st => st.id === sId)?.name || "Staff";
+    
+    setAdjustModal({
+      staff_id: sId,
+      date: logDate,
+      staff_name: sName,
+      check_in: currentLog.check_in || "09:00",
+      check_out: currentLog.check_out || "21:00",
+      status: currentLog.status || "present"
+    });
+  };
+
+  const handleSaveAdjustment = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      const { staff_id, date: logDate, check_in, check_out, staff_name, status } = adjustModal;
+      
+      if (check_in && check_out) {
+        const [inH, inM] = check_in.split(":").map(Number);
+        const [outH, outM] = check_out.split(":").map(Number);
+        if (outH * 60 + outM <= inH * 60 + inM) {
+          toast.error("Check-out time must be later than check-in time.");
+          setSaving(false);
+          return;
+        }
+      }
+      
+      const record = {
+        staff_id,
+        date: logDate,
+        status,
+        check_in,
+        check_out,
+        notes: attendanceLogs[staff_id]?.notes || ""
+      };
+      
+      await saveAttendance([record]);
+      await createAttendanceLog({
+        staff_id,
+        date: logDate,
+        action_type: "adjustment",
+        details: `Manager adjusted ${staff_name}'s time: In ${format12HourTime(check_in)} / Out ${format12HourTime(check_out)}`
+      });
+      
+      toast.success(`Adjusted attendance times for ${staff_name}`);
+      setAdjustModal(null);
+      reload();
+    } catch (err) {
+      toast.error(err.message || "Failed to adjust times");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleSaveAttendance = async () => {
@@ -287,7 +393,8 @@ export default function AttendanceManager() {
       </div>
 
       {subView === "attendance" && (
-        <div className="table-wrap">
+        <>
+          <div className="table-wrap">
           <div className="table-header" style={{ paddingBottom: "1.5rem" }}>
             <div>
               <div className="table-title">Daily Attendance Logs</div>
@@ -344,11 +451,9 @@ export default function AttendanceManager() {
                     </td>
                     <td>
                       <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                        <TimePickerAMPM
-                          value={log.check_in}
-                          onChange={val => handleFieldChange(s.id, "check_in", val)}
-                          disabled={log.status === "absent" || log.status === "leave"}
-                        />
+                        <span style={{ fontWeight: 600, fontSize: "0.75rem", minWidth: "60px", color: "var(--a-text)" }}>
+                          {format12HourTime(log.check_in)}
+                        </span>
                         <button
                           type="button"
                           className="tbl-btn"
@@ -362,16 +467,14 @@ export default function AttendanceManager() {
                     </td>
                     <td>
                       <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                        <TimePickerAMPM
-                          value={log.check_out}
-                          onChange={val => handleFieldChange(s.id, "check_out", val)}
-                          disabled={log.status === "absent" || log.status === "leave"}
-                        />
+                        <span style={{ fontWeight: 600, fontSize: "0.75rem", minWidth: "60px", color: "var(--a-text)" }}>
+                          {format12HourTime(log.check_out)}
+                        </span>
                         <button
                           type="button"
                           className="tbl-btn"
                           style={{ padding: "0.3rem 0.5rem", fontSize: "0.65rem", background: "rgba(201,185,154,0.1)", border: "1px solid var(--gold)", color: "var(--gold)" }}
-                          disabled={log.status === "absent" || log.status === "leave" || saving}
+                          disabled={!log.check_in || log.status === "absent" || log.status === "leave" || saving}
                           onClick={() => logCheckOut(s.id)}
                         >
                           Check Out
@@ -402,6 +505,43 @@ export default function AttendanceManager() {
             </tbody>
           </table>
         </div>
+
+        {/* Activity Logs Section */}
+        <div style={{ marginTop: "2rem", borderTop: "1px solid var(--a-border)", paddingTop: "1.5rem" }}>
+          <div className="table-title" style={{ fontSize: "1rem", marginBottom: "0.25rem" }}>Operator Activity Logs</div>
+          <div className="pos-sub" style={{ marginBottom: "1rem" }}>Chronological log of check-ins, check-outs, and time adjustments</div>
+          <div style={{ background: "var(--a-bg-muted, #fafafa)", border: "1px solid var(--a-border)", borderRadius: "4px", padding: "1rem", maxHeight: "250px", overflowY: "auto" }}>
+            {dailyLogs.length === 0 ? (
+              <div style={{ color: "var(--a-muted)", fontSize: "0.72rem", textAlign: "center", padding: "1rem" }}>
+                No activities logged for today.
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}>
+                {dailyLogs.map(l => {
+                  const lStaff = (staff || []).find(st => st.id === l.staff_id);
+                  const timeStr = new Date(l.timestamp).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
+                  return (
+                    <div key={l.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "0.72rem", padding: "0.35rem 0.5rem", borderBottom: "1px solid rgba(0,0,0,0.03)" }}>
+                      <div>
+                        <span style={{ color: "var(--a-muted)", fontWeight: 600, marginRight: "0.5rem" }}>{timeStr}</span>
+                        <span style={{ color: "var(--a-text)" }}>{l.details}</span>
+                      </div>
+                      <button
+                        type="button"
+                        className="tbl-btn"
+                        style={{ padding: "0.2rem 0.4rem", fontSize: "0.65rem" }}
+                        onClick={() => handleOpenAdjustModal(l)}
+                      >
+                        Adjust Time
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+        </>
       )}
 
       {subView === "roster" && (
@@ -580,6 +720,46 @@ export default function AttendanceManager() {
             <div className="modal-footer">
               <button type="button" className="tbl-btn" onClick={() => setStaffModal(null)}>Cancel</button>
               <button type="submit" form="staff-form" className="btn-add" disabled={saving}>{saving ? "Saving..." : "Save Member"}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {adjustModal && (
+        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setAdjustModal(null)}>
+          <div className="modal" style={{ maxWidth: "450px" }}>
+            <div className="modal-header">
+              <div className="modal-title">Adjust Time: {adjustModal.staff_name}</div>
+              <button className="modal-close" onClick={() => setAdjustModal(null)}>✕</button>
+            </div>
+            <div className="modal-body">
+              <form id="adjust-form" onSubmit={handleSaveAdjustment}>
+                <div style={{ fontSize: "0.72rem", color: "var(--a-muted)", marginBottom: "1rem" }}>
+                  Adjusting attendance times for <strong>{adjustModal.date}</strong>.
+                </div>
+                
+                <div className="form-group" style={{ marginBottom: "1rem" }}>
+                  <label className="form-label" style={{ marginBottom: "0.5rem" }}>Check-in Time</label>
+                  <TimePickerAMPM
+                    value={adjustModal.check_in}
+                    onChange={val => setAdjustModal(prev => ({ ...prev, check_in: val }))}
+                  />
+                </div>
+                
+                <div className="form-group" style={{ marginBottom: "1.5rem" }}>
+                  <label className="form-label" style={{ marginBottom: "0.5rem" }}>Check-out Time</label>
+                  <TimePickerAMPM
+                    value={adjustModal.check_out}
+                    onChange={val => setAdjustModal(prev => ({ ...prev, check_out: val }))}
+                  />
+                </div>
+              </form>
+            </div>
+            <div className="modal-footer">
+              <button type="button" className="tbl-btn" onClick={() => setAdjustModal(null)}>Cancel</button>
+              <button type="submit" form="adjust-form" className="btn-add" disabled={saving}>
+                {saving ? "Saving..." : "Save Adjustments"}
+              </button>
             </div>
           </div>
         </div>

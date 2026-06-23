@@ -62,7 +62,7 @@ export function formatInvoiceMessage(invoice, items = [], settings = {}) {
   msg.push(``);
   msg.push(`Dear *${clientFirstName}*,`);
   msg.push(``);
-  msg.push(`Thank you for visiting us on *${visitDate}*! ✂️`);
+  msg.push(`Thank you for visiting us on *${visitDate}*!`);
   msg.push(`We're thrilled to have had the pleasure of serving you.`);
   msg.push(``);
 
@@ -94,24 +94,24 @@ export function formatInvoiceMessage(invoice, items = [], settings = {}) {
     });
     paymentText = `Cash + UPI (Cash: Rs ${c}, UPI: Rs ${u})`;
   }
-  msg.push(`*Amount Paid:* Rs ${totalPaid} ✅ (${paymentText})`);
+  msg.push(`*Amount Paid:* Rs ${totalPaid} (${paymentText})`);
   msg.push(`*Invoice:* ${invoice.invoice_number || "—"}`);
   msg.push(``);
 
   if (isMember) {
-    msg.push(`*Membership:* ⭐ Active Member`);
+    msg.push(`*Membership:* Active Member`);
     if (membershipEndStr) {
       msg.push(`*Valid until:* ${membershipEndStr}`);
     }
     msg.push(``);
   }
 
-  msg.push(`We look forward to seeing you again soon! 💛`);
+  msg.push(`We look forward to seeing you again soon!`);
   msg.push(``);
-  msg.push(`📸 *Follow us on Instagram:*`);
+  msg.push(`*Follow us on Instagram:*`);
   msg.push(instaLink);
   msg.push(``);
-  msg.push(`📍 *Find us on Google Maps:*`);
+  msg.push(`*Find us on Google Maps:*`);
   msg.push(mapsLink);
   msg.push(``);
   msg.push(`_Toni & Guy Essensuals Gorantla | +91 91002 92525_`);

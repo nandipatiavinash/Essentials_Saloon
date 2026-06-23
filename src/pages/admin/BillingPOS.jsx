@@ -96,7 +96,14 @@ export default function BillingPOS() {
 
   const loadHistory = async (term = "") => {
     setLoadingHistory(true);
-    try { setHistory(await searchInvoices(term)); }
+    try {
+      const allInvoices = await searchInvoices(term);
+      const todayStr = new Date().toDateString();
+      const todaysInvoices = allInvoices.filter(inv => {
+        return new Date(inv.billing_at).toDateString() === todayStr;
+      });
+      setHistory(todaysInvoices);
+    }
     catch (err) { toast.error(err.message); }
     finally { setLoadingHistory(false); }
   };
@@ -288,9 +295,9 @@ export default function BillingPOS() {
               margin: 0;
             }
             body {
-              width: 70mm;
+              width: 72mm;
               margin: 0 auto;
-              padding: 5mm 0;
+              padding: 2mm;
               font-family: 'Courier New', Courier, monospace;
               font-size: 11px;
               color: #000;
@@ -343,9 +350,17 @@ export default function BillingPOS() {
               margin-top: 15px;
               font-size: 10px;
             }
+            @media print {
+              .no-print { display: none !important; }
+            }
           </style>
         </head>
         <body>
+          <div class="no-print" style="text-align: center; margin-bottom: 10px; padding: 10px; background: #f5f5f0; border-bottom: 1px solid #ccc;">
+            <button onclick="window.print()" style="padding: 6px 12px; font-weight: bold; cursor: pointer;">Print Receipt</button>
+            <button onclick="window.close()" style="padding: 6px 12px; margin-left: 10px; cursor: pointer;">Close Window</button>
+          </div>
+
           <div class="text-center">
             <div class="header-title">${salonName}</div>
             <div class="header-sub">${logoSub}</div>
@@ -357,8 +372,8 @@ export default function BillingPOS() {
           <table class="meta-table">
             <tr><td><b>Date:</b> ${new Date(invoiceData.billing_at).toLocaleString("en-IN")}</td></tr>
             <tr><td><b>Invoice #:</b> ${invoiceData.invoice_number}</td></tr>
-            <tr><td><b>Client:</b> ${invoiceData.client_name} (${invoiceData.mobile})</td></tr>
-            ${invoiceData.staff_name ? `<tr><td><b>Stylist:</b> ${invoiceData.staff_name}</td></tr>` : ""}
+            <tr><td><b>Name:</b> ${invoiceData.client_name}</td></tr>
+            <tr><td><b>Mobile:</b> ${invoiceData.mobile}</td></tr>
             ${invoiceData.payment_method ? `<tr><td><b>Payment:</b> ${
               invoiceData.payment_method === "Cash + UPI" && invoiceData.transaction_id?.includes("cash:") ? (
                 (() => {
@@ -389,7 +404,6 @@ export default function BillingPOS() {
                 <tr>
                   <td>
                     ${item.item_type === "product" ? "[PKT] " : ""}${item.service_name}
-                    ${item.staff_name ? `<br/><small style="font-size:9px;color:#555;">(${item.staff_name})</small>` : ""}
                   </td>
                   <td style="text-align: center; vertical-align: top;">${item.quantity}</td>
                   <td style="text-align: right; vertical-align: top;">Rs ${Number(item.price * item.quantity).toFixed(2)}</td>
@@ -418,11 +432,10 @@ export default function BillingPOS() {
             Follow us on Instagram<br/>
             @toniandguy_essensual_gorantla
           </div>
-          
+
           <script>
             window.onload = function() {
-              window.print();
-              setTimeout(function() { window.close(); }, 500);
+              setTimeout(function() { window.print(); }, 800);
             };
           </script>
         </body>
@@ -442,6 +455,55 @@ export default function BillingPOS() {
   };
   // Assign to ref so useEffect (which runs before const hoisting) can call it
   handleViewInvoiceRef.current = handleViewInvoice;
+
+  const handleEditInvoice = (invoiceData, itemsData) => {
+    const invoiceDate = new Date(invoiceData.billing_at);
+    const today = new Date();
+    if (invoiceDate.toDateString() !== today.toDateString()) {
+      toast.error("Only today's invoices can be edited.");
+      return;
+    }
+
+    const loadedItems = itemsData.map(item => ({
+      service_id: item.service_id,
+      inventory_id: item.inventory_id,
+      service_name: item.service_name,
+      item_type: item.item_type || "service",
+      quantity: item.quantity,
+      price: item.price,
+      staff_name: item.staff_name
+    }));
+    
+    const subtotal = loadedItems.reduce((sum, item) => sum + (item.quantity * item.price), 0);
+    const discountPct = subtotal > 0 ? Math.round((Number(invoiceData.discount || 0) / subtotal) * 100) : 0;
+
+    setBill({
+      id: invoiceData.id,
+      invoice_number: invoiceData.invoice_number,
+      customer_id: invoiceData.customer_id,
+      client_name: invoiceData.client_name,
+      mobile: invoiceData.mobile,
+      customer_notes: invoiceData.customer?.notes || "",
+      is_member: !!invoiceData.customer?.is_member,
+      membership_tier: invoiceData.customer?.membership_tier || "Member",
+      membership_id: invoiceData.customer?.membership_id || "",
+      membership_end: invoiceData.customer?.membership_end || "",
+      staff_name: invoiceData.staff_name,
+      billing_at: new Date(invoiceData.billing_at).toISOString().slice(0, 16),
+      discount: String(discountPct),
+      tip: String(invoiceData.tip || 0),
+      tax_enabled: Number(invoiceData.tax_rate || 0) > 0,
+      tax_rate: Number(invoiceData.tax_rate || 5),
+      payment_method: invoiceData.payment_method || "Cash",
+      transaction_id: invoiceData.transaction_id || "",
+      notes: invoiceData.notes || "",
+      items: loadedItems
+    });
+    setBillSaved(false);
+    setViewInvoiceData(null);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    toast.success(`Loaded invoice ${invoiceData.invoice_number} for editing.`);
+  };
 
   const printInvoice = () => {
     if (invoice) {
@@ -665,9 +727,15 @@ export default function BillingPOS() {
 
           <div className="pos-section">
             <div className="form-row">
-              <div className="form-group">
-                <label className="form-label">Discount</label>
-                <input type="number" min="0" className="form-input" value={bill.discount} onChange={(e) => setBill({ ...bill, discount: e.target.value })} />
+               <div className="form-group">
+                <label className="form-label">Discount (%)</label>
+                <input type="number" min="0" max="100" className="form-input" value={bill.discount} onChange={(e) => {
+                  let val = e.target.value;
+                  if (val !== "") {
+                    val = String(Math.min(100, Math.max(0, Number(val))));
+                  }
+                  setBill({ ...bill, discount: val });
+                }} />
               </div>
               <div className="form-group">
                 <label className="form-label">Tip Amount</label>
@@ -925,6 +993,16 @@ export default function BillingPOS() {
               </div>
             </div>
             <div className="modal-footer">
+              {new Date(viewInvoiceData.invoice.billing_at).toDateString() === new Date().toDateString() && (
+                <button 
+                  type="button" 
+                  className="tbl-btn" 
+                  style={{ background: "rgba(201,185,154,0.15)", border: "1px solid var(--gold)", color: "var(--gold)", fontWeight: "bold" }}
+                  onClick={() => handleEditInvoice(viewInvoiceData.invoice, viewInvoiceData.items)}
+                >
+                  Edit Invoice
+                </button>
+              )}
               <button 
                 type="button" 
                 className="tbl-btn" 

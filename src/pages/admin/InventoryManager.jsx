@@ -8,22 +8,37 @@ export default function InventoryManager() {
   const { inventory, reload } = useAdmin();
   const [search, setSearch] = useState("");
   const [modalObj, setModalObj] = useState(null); // null | {} = add | {id...} = edit
+  const [activeTab, setActiveTab] = useState("retail"); // retail | consumption
   const [saving, setSaving] = useState(false);
+
+  const getExpiryStatus = (expiryDateStr) => {
+    if (!expiryDateStr) return null;
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    const exp = new Date(expiryDateStr);
+    exp.setHours(0,0,0,0);
+    if (exp < today) return 'expired';
+    const diffTime = exp.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    if (diffDays <= 30) return 'expiring_soon';
+    return null;
+  };
 
   const filtered = useMemo(() => {
     const term = search.toLowerCase();
-    return (inventory || []).filter((item) =>
-      item.name?.toLowerCase().includes(term) || item.sku?.toLowerCase().includes(term) || item.category?.toLowerCase().includes(term)
+    const list = (inventory || []).filter(item => (item.inventory_type || 'retail') === activeTab);
+    return list.filter((item) =>
+      item.name?.toLowerCase().includes(term) || item.category?.toLowerCase().includes(term)
     );
-  }, [inventory, search]);
+  }, [inventory, search, activeTab]);
 
   const metrics = useMemo(() => {
-    const list = inventory || [];
+    const list = (inventory || []).filter(item => (item.inventory_type || 'retail') === activeTab);
     const totalItems = list.length;
     const lowStockCount = list.filter(item => Number(item.stock_qty) <= Number(item.min_qty)).length;
     const stockVal = list.reduce((sum, item) => sum + (Number(item.stock_qty) * Number(item.unit_price)), 0);
     return { totalItems, lowStockCount, stockVal };
-  }, [inventory]);
+  }, [inventory, activeTab]);
 
   const handleSave = async (e) => {
     e.preventDefault();
@@ -32,7 +47,8 @@ export default function InventoryManager() {
       const payload = {
         name: modalObj.name.trim(),
         category: modalObj.category || "General",
-        sku: modalObj.sku || null,
+        inventory_type: modalObj.inventory_type || "retail",
+        expiry_date: modalObj.expiry_date || null,
         stock_qty: Number(modalObj.stock_qty || 0),
         min_qty: Number(modalObj.min_qty || 0),
         unit_price: Number(modalObj.unit_price || 0),
@@ -101,12 +117,23 @@ export default function InventoryManager() {
         </div>
       </div>
 
+      <div style={{ display: "flex", gap: "1rem", marginBottom: "1.5rem" }}>
+        <button className={`tbl-btn ${activeTab === "retail" ? "active" : ""}`} onClick={() => setActiveTab("retail")}>
+          <Package size={14} style={{ marginRight: 6 }} /> Retail Stock
+        </button>
+        <button className={`tbl-btn ${activeTab === "consumption" ? "active" : ""}`} onClick={() => setActiveTab("consumption")}>
+          <Layers size={14} style={{ marginRight: 6 }} /> Salon Consumption Stock
+        </button>
+      </div>
+
       <div className="table-wrap">
         <div className="table-header">
-          <div className="table-title">Product & Supply Inventory</div>
+          <div className="table-title">
+            {activeTab === "retail" ? "Retail Inventory" : "Salon Consumption Inventory"}
+          </div>
           <div className="table-actions">
-            <input type="search" className="admin-search" placeholder="SKU or product name..." value={search} onChange={e => setSearch(e.target.value)} />
-            <button className="btn-add" onClick={() => setModalObj({ name: "", category: "Cosmetics", sku: "", stock_qty: 0, min_qty: 5, unit_price: 0 })}>
+            <input type="search" className="admin-search" placeholder="Search product name..." value={search} onChange={e => setSearch(e.target.value)} />
+            <button className="btn-add" onClick={() => setModalObj({ name: "", category: "Cosmetics", inventory_type: activeTab, expiry_date: "", stock_qty: 0, min_qty: 5, unit_price: 0 })}>
               <Plus size={14} style={{ marginRight: 6 }} /> Add Product
             </button>
           </div>
@@ -114,11 +141,11 @@ export default function InventoryManager() {
         <table>
           <thead>
             <tr>
-              <th>SKU</th>
               <th>Product Name</th>
               <th>Category</th>
               <th>Stock Level</th>
               <th>Unit Cost (₹)</th>
+              <th>Expiry Date</th>
               <th>Supplier</th>
               <th style={{ textAlign: "right" }}>Actions</th>
             </tr>
@@ -126,11 +153,19 @@ export default function InventoryManager() {
           <tbody>
             {filtered.map(item => {
               const isLow = Number(item.stock_qty) <= Number(item.min_qty);
+              const expStatus = getExpiryStatus(item.expiry_date);
+              
+              let rowBg = "none";
+              if (expStatus === 'expired') {
+                rowBg = "rgba(239,83,80,0.08)";
+              } else if (expStatus === 'expiring_soon') {
+                rowBg = "rgba(255,238,88,0.12)";
+              } else if (isLow) {
+                rowBg = "rgba(183,28,28,0.03)";
+              }
+
               return (
-                <tr key={item.id} style={{ background: isLow ? "rgba(183,28,28,0.03)" : "none" }}>
-                  <td style={{ fontFamily: "monospace", fontSize: "0.72rem", color: "#666" }}>
-                    {item.sku || "—"}
-                  </td>
+                <tr key={item.id} style={{ background: rowBg }}>
                   <td>
                     <div style={{ fontWeight: 600 }}>{item.name}</div>
                     {item.notes && <div style={{ fontSize: "0.62rem", color: "var(--a-muted)" }}>{item.notes}</div>}
@@ -153,6 +188,21 @@ export default function InventoryManager() {
                     </div>
                   </td>
                   <td>Rs {Number(item.unit_price || 0).toLocaleString("en-IN")}</td>
+                  <td>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                      <span>{item.expiry_date ? new Date(item.expiry_date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—"}</span>
+                      {expStatus === 'expired' && (
+                        <span style={{ fontSize: "0.55rem", fontWeight: "bold", color: "#d32f2f", background: "#ffebee", padding: "2px 4px", borderRadius: "2px", width: "fit-content" }}>
+                          EXPIRED
+                        </span>
+                      )}
+                      {expStatus === 'expiring_soon' && (
+                        <span style={{ fontSize: "0.55rem", fontWeight: "bold", color: "#f57c00", background: "#fff3e0", padding: "2px 4px", borderRadius: "2px", width: "fit-content" }}>
+                          EXPIRING SOON
+                        </span>
+                      )}
+                    </div>
+                  </td>
                   <td>{item.supplier || "—"}</td>
                   <td>
                     <div className="tbl-actions" style={{ justifyContent: "flex-end" }}>
@@ -166,7 +216,7 @@ export default function InventoryManager() {
             {!filtered.length && (
               <tr>
                 <td colSpan={7} style={{ textAlign: "center", padding: "3rem", color: "var(--a-muted)" }}>
-                  No inventory products found.
+                  No inventory products found in this section.
                 </td>
               </tr>
             )}
@@ -190,7 +240,7 @@ export default function InventoryManager() {
                 <div className="form-row">
                   <div className="form-group">
                     <label className="form-label">Category</label>
-                    <select className="form-input" value={modalObj.category || ""} onChange={e => setModalObj({ ...modalObj, category: e.target.value })}>
+                    <select className="form-input" value={modalObj.category || "General"} onChange={e => setModalObj({ ...modalObj, category: e.target.value })}>
                       <option value="Hair Care">Hair Care (Shampoos/Sprays)</option>
                       <option value="Color & Bleach">Color & Bleach</option>
                       <option value="Skin Care">Skin Care (Creams/Face Wash)</option>
@@ -200,8 +250,11 @@ export default function InventoryManager() {
                     </select>
                   </div>
                   <div className="form-group">
-                    <label className="form-label">SKU Code / Barcode</label>
-                    <input className="form-input" value={modalObj.sku || ""} onChange={e => setModalObj({ ...modalObj, sku: e.target.value })} placeholder="e.g. SHA-800-01" />
+                    <label className="form-label">Inventory Stock Type *</label>
+                    <select className="form-input" value={modalObj.inventory_type || "retail"} onChange={e => setModalObj({ ...modalObj, inventory_type: e.target.value })} required>
+                      <option value="retail">Retail Stock</option>
+                      <option value="consumption">Salon Consumption</option>
+                    </select>
                   </div>
                 </div>
 
@@ -221,6 +274,13 @@ export default function InventoryManager() {
                     <label className="form-label">Unit Price Cost (₹) *</label>
                     <input type="number" min="0" className="form-input" value={modalObj.unit_price || 0} onChange={e => setModalObj({ ...modalObj, unit_price: e.target.value })} required />
                   </div>
+                  <div className="form-group">
+                    <label className="form-label">Expiry Date</label>
+                    <input type="date" className="form-input" value={modalObj.expiry_date || ""} onChange={e => setModalObj({ ...modalObj, expiry_date: e.target.value })} />
+                  </div>
+                </div>
+
+                <div className="form-row">
                   <div className="form-group">
                     <label className="form-label">Supplier Name</label>
                     <input className="form-input" value={modalObj.supplier || ""} onChange={e => setModalObj({ ...modalObj, supplier: e.target.value })} placeholder="Distributor name..." />
