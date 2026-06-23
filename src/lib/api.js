@@ -338,6 +338,7 @@ export async function saveInvoice(payload) {
     price: Number(item.price || 0),
     total: Number(item.quantity || 1) * Number(item.price || 0),
     staff_name: item.staff_name || payload.staff_name || null,
+    tax_inclusive: item.item_type === "service" ? (item.tax_inclusive !== false) : true,
   }));
   const { error: itemsError } = await t("invoice_items").insert(itemRows);
   if (itemsError) throw itemsError;
@@ -496,7 +497,6 @@ function normBooking(row) {
 
 export function calculateInvoiceTotals(payload) {
   const items = payload.items ?? [];
-  // Only service items attract GST; product and membership items are GST-exempt
   const serviceSubtotal = items.reduce((sum, item) => {
     if (item.item_type === "product" || item.item_type === "membership") return sum;
     return sum + Number(item.quantity || 1) * Number(item.price || 0);
@@ -510,26 +510,65 @@ export function calculateInvoiceTotals(payload) {
     return sum + Number(item.quantity || 1) * Number(item.price || 0);
   }, 0);
   const subtotal = serviceSubtotal + productSubtotal + membershipSubtotal;
-  
-  // payload.discount is treated as a percentage (from 0 to 100)
+
   const discountPct = Number(payload.discount || 0);
-  const discount = subtotal * (discountPct / 100);
-  const serviceDiscount = serviceSubtotal * (discountPct / 100);
-  const serviceAfterDiscount = Math.max(serviceSubtotal - serviceDiscount, 0);
-  
-  const taxable = serviceAfterDiscount;
-  const tax = payload.tax_enabled === false ? 0 : taxable * (Number(payload.tax_rate || 0) / 100);
+  const taxRate = payload.tax_enabled === false ? 0 : Number(payload.tax_rate || 5);
+  const taxEnabled = payload.tax_enabled !== false;
+
+  let totalTaxable = 0;
+  let totalTax = 0;
+  let totalDiscount = 0;
+
+  items.forEach(item => {
+    const qty = Number(item.quantity || 1);
+    const price = Number(item.price || 0);
+    const rawTotal = qty * price;
+    const itemDiscount = rawTotal * (discountPct / 100);
+    totalDiscount += itemDiscount;
+    const discountedTotal = rawTotal - itemDiscount;
+
+    if (item.item_type === "product" || item.item_type === "membership") {
+      return;
+    }
+
+    if (taxEnabled && taxRate > 0) {
+      if (item.tax_inclusive !== false) {
+        const base = discountedTotal / (1 + (taxRate / 100));
+        const tax = discountedTotal - base;
+        totalTaxable += base;
+        totalTax += tax;
+      } else {
+        const base = discountedTotal;
+        const tax = discountedTotal * (taxRate / 100);
+        totalTaxable += base;
+        totalTax += tax;
+      }
+    } else {
+      totalTaxable += discountedTotal;
+    }
+  });
+
+  const productSubtotalDiscounted = items
+    .filter(item => item.item_type === "product")
+    .reduce((sum, item) => sum + (Number(item.quantity || 1) * Number(item.price || 0) * (1 - discountPct / 100)), 0);
+
+  const membershipSubtotalDiscounted = items
+    .filter(item => item.item_type === "membership")
+    .reduce((sum, item) => sum + (Number(item.quantity || 1) * Number(item.price || 0) * (1 - discountPct / 100)), 0);
+
   const tip = Number(payload.tip || 0);
+  const total = totalTaxable + totalTax + productSubtotalDiscounted + membershipSubtotalDiscounted + tip;
+
   return {
     subtotal: roundMoney(subtotal),
     serviceSubtotal: roundMoney(serviceSubtotal),
     productSubtotal: roundMoney(productSubtotal),
     membershipSubtotal: roundMoney(membershipSubtotal),
-    discount: roundMoney(discount),
-    taxable: roundMoney(taxable),
-    tax: roundMoney(tax),
+    discount: roundMoney(totalDiscount),
+    taxable: roundMoney(totalTaxable),
+    tax: roundMoney(totalTax),
     tip: roundMoney(tip),
-    total: roundMoney(taxable + tax + productSubtotal + membershipSubtotal + tip),
+    total: roundMoney(total),
   };
 }
 

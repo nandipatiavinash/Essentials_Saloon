@@ -177,6 +177,7 @@ export default function BillingPOS() {
             service_name: service.name,
             quantity: 1,
             price,
+            tax_inclusive: service.tax_inclusive !== false,
             staff_name: current.staff_name || "",
           }
         ];
@@ -471,6 +472,7 @@ export default function BillingPOS() {
       item_type: item.item_type || "service",
       quantity: item.quantity,
       price: item.price,
+      tax_inclusive: item.tax_inclusive !== false,
       staff_name: item.staff_name
     }));
     

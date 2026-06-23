@@ -44,10 +44,10 @@ export default function ReportsManager() {
     const productBreakdown = {};
 
     dayInvoices.forEach((inv) => {
-      const netAmt = Number(inv.subtotal || 0) - Number(inv.discount || 0);
       const gst = Number(inv.tax || 0);
       const tip = Number(inv.tip || 0);
       const total = Number(inv.total || 0);
+      const netAmt = total - gst - tip;
       const payment = inv.payment_method || "Unknown";
 
       totalNet += netAmt;
@@ -323,7 +323,7 @@ export default function ReportsManager() {
                   data.invoices.length > 0
                     ? data.invoices
                         .map((inv) => {
-                          const netAmt = Number(inv.subtotal || 0) - Number(inv.discount || 0);
+                          const netAmt = Number(inv.total || 0) - Number(inv.tax || 0) - Number(inv.tip || 0);
                           const itemsStr = (inv.invoice_items || [])
                             .map((item) => `${item.service_name} (${item.staff_name || inv.staff_name || "Stylist"})`)
                             .join(", ") || "—";
@@ -609,7 +609,7 @@ export default function ReportsManager() {
     
     if (data.invoices.length > 0) {
       data.invoices.forEach(inv => {
-        const netAmt = Number(inv.subtotal || 0) - Number(inv.discount || 0);
+        const netAmt = Number(inv.total || 0) - Number(inv.tax || 0) - Number(inv.tip || 0);
         const itemsStr = (inv.invoice_items || [])
           .map((item) => `${item.service_name} (${item.staff_name || inv.staff_name || "Stylist"})`)
           .join(", ") || "—";
@@ -713,7 +713,7 @@ export default function ReportsManager() {
       gross += Number(inv.total || 0);
       gst += Number(inv.tax || 0);
       tips += Number(inv.tip || 0);
-      net += Number(inv.subtotal || 0) - Number(inv.discount || 0);
+      net += Number(inv.total || 0) - Number(inv.tax || 0) - Number(inv.tip || 0);
     });
 
     return { gross, gst, tips, net };
@@ -934,7 +934,7 @@ export default function ReportsManager() {
           </thead>
           <tbody>
             {filteredInvoices.map((inv) => {
-              const netAmt = Number(inv.subtotal || 0) - Number(inv.discount || 0);
+              const netAmt = Number(inv.total || 0) - Number(inv.tax || 0) - Number(inv.tip || 0);
               return (
                 <tr key={inv.id}>
                   <td>{inv.billing_at ? inv.billing_at.slice(0, 10) : "—"}</td>

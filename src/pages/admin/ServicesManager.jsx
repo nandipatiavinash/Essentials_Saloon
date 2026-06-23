@@ -64,7 +64,7 @@ export default function ServicesManager() {
           <div className="table-title">Manage Services</div>
           <div className="table-actions">
             <input type="search" className="admin-search" placeholder="Search..." value={search} onChange={e => setSearch(e.target.value)} />
-            <button className="btn-add" onClick={() => handleOpenModal({ name: "", category: categories?.[0]?.slug || "", price_from: 0, active: true })}>+ New Service</button>
+            <button className="btn-add" onClick={() => handleOpenModal({ name: "", category: categories?.[0]?.slug || "", price_from: 0, tax_inclusive: true, active: true })}>+ New Service</button>
           </div>
         </div>
         <table>
@@ -86,7 +86,7 @@ export default function ServicesManager() {
                 </td>
                 <td>{categories?.find(c => c.slug === s.category)?.name || s.category}</td>
                 <td>
-                  <div style={{ fontSize: "0.75rem" }}>Regular: ₹{s.price_from}</div>
+                  <div style={{ fontSize: "0.75rem" }}>Regular: ₹{s.price_from} {s.tax_inclusive === false ? "(Excl. GST)" : "(Incl. GST)"}</div>
                   {s.member_price != null && s.member_price > 0 && (
                     <div style={{ fontSize: "0.68rem", color: "var(--gold)" }}>Member: ₹{s.member_price}</div>
                   )}
@@ -162,6 +162,10 @@ export default function ServicesManager() {
                   <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.8rem", cursor: "pointer" }}>
                     <input type="checkbox" checked={!!modalObj.featured} onChange={e => setModalObj({ ...modalObj, featured: e.target.checked })} />
                     Featured
+                  </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.8rem", cursor: "pointer" }}>
+                    <input type="checkbox" checked={modalObj.tax_inclusive !== false} onChange={e => setModalObj({ ...modalObj, tax_inclusive: e.target.checked })} />
+                    Price Inclusive of GST
                   </label>
                 </div>
               </form>
