@@ -142,7 +142,7 @@ export function formatEodReportMessage(report, settings = {}, invoices = [], inv
       const serviceNames = (inv.invoice_items || [])
         .map(item => `${item.service_name} (${item.staff_name || inv.staff_name || "Stylist"})`)
         .join(", ") || "—";
-      const netAmt = Number(inv.subtotal || 0) - Number(inv.discount || 0);
+      const netAmt = Number(inv.total || 0) - Number(inv.tax || 0) - Number(inv.tip || 0);
       const gst = Number(inv.tax || 0);
       const tip = Number(inv.tip || 0);
       const total = Number(inv.total || 0);
@@ -160,7 +160,8 @@ export function formatEodReportMessage(report, settings = {}, invoices = [], inv
       (inv.invoice_items || []).forEach(item => {
         const itemStaff = item.staff_name || inv.staff_name || "Unknown Stylist";
         const itemType = item.item_type || "service";
-        const itemVal = Number(item.quantity || 1) * Number(item.price || 0);
+        const displayPrice = itemType === "service" && item.tax_inclusive !== false ? (Number(item.price || 0) / 1.05) : Number(item.price || 0);
+        const itemVal = Number(item.quantity || 1) * displayPrice;
 
         if (!staffStats[itemStaff]) {
           staffStats[itemStaff] = { clients: new Set(), netServices: 0, products: 0, tips: 0, total: 0 };

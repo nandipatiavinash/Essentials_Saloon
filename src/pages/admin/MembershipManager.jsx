@@ -9,19 +9,64 @@ export default function MembershipManager() {
   const [search, setSearch] = useState("");
   const [modalObj, setModalObj] = useState(null); // null or { customerId, name, mobile, is_member, membership_tier, membership_start, membership_end, membership_id, isNew }
   const [saving, setSaving] = useState(false);
+  const [sortField, setSortField] = useState("name");
+  const [sortAsc, setSortAsc] = useState(true);
+
+  const safeParseDate = (dateStr) => {
+    if (!dateStr) return new Date();
+    if (dateStr instanceof Date) return dateStr;
+    if (typeof dateStr === "string" && dateStr.includes("/")) {
+      const parts = dateStr.split("/");
+      if (parts.length === 3) {
+        let day = parseInt(parts[0], 10);
+        let month = parseInt(parts[1], 10) - 1;
+        let year = parseInt(parts[2], 10);
+        if (parts[2].length === 2) {
+          year += 2000;
+        }
+        return new Date(year, month, day);
+      }
+    }
+    const parsed = new Date(dateStr);
+    if (isNaN(parsed.getTime())) {
+      return new Date();
+    }
+    if (parsed.getFullYear() < 100) {
+      parsed.setFullYear(parsed.getFullYear() + 2000);
+    }
+    return parsed;
+  };
 
   const filtered = useMemo(() => {
     const term = search.toLowerCase();
-    return (customers || []).filter((client) =>
+    let result = (customers || []).filter((client) =>
       client.name?.toLowerCase().includes(term) || client.mobile?.includes(term)
     );
-  }, [customers, search]);
+    if (sortField) {
+      result.sort((a, b) => {
+        let valA = a[sortField];
+        let valB = b[sortField];
+
+        // Handle string/number/boolean/null values
+        if (valA === undefined || valA === null) valA = "";
+        if (valB === undefined || valB === null) valB = "";
+
+        if (typeof valA === "string") valA = valA.toLowerCase();
+        if (typeof valB === "string") valB = valB.toLowerCase();
+
+        if (valA < valB) return sortAsc ? -1 : 1;
+        if (valA > valB) return sortAsc ? 1 : -1;
+        return 0;
+      });
+    }
+    return result;
+  }, [customers, search, sortField, sortAsc]);
 
   const stats = useMemo(() => {
     const list = customers || [];
     const activeMembers = list.filter(c => {
       if (!c.is_member || !c.membership_end) return false;
-      const end = new Date(c.membership_end);
+      const end = safeParseDate(c.membership_end);
       end.setHours(0,0,0,0);
       const today = new Date();
       today.setHours(0,0,0,0);
@@ -30,7 +75,7 @@ export default function MembershipManager() {
 
     const expiredMembers = list.filter(c => {
       if (!c.is_member || !c.membership_end) return false;
-      const end = new Date(c.membership_end);
+      const end = safeParseDate(c.membership_end);
       end.setHours(0,0,0,0);
       const today = new Date();
       today.setHours(0,0,0,0);
@@ -44,12 +89,21 @@ export default function MembershipManager() {
 
   const getDaysRemaining = (endDateStr) => {
     if (!endDateStr) return 0;
-    const end = new Date(endDateStr);
+    const end = safeParseDate(endDateStr);
     const today = new Date();
     end.setHours(0,0,0,0);
     today.setHours(0,0,0,0);
     const diff = end.getTime() - today.getTime();
     return Math.ceil(diff / (1000 * 60 * 60 * 24));
+  };
+
+  const handleSort = (field) => {
+    if (sortField === field) {
+      setSortAsc(!sortAsc);
+    } else {
+      setSortField(field);
+      setSortAsc(true);
+    }
   };
 
   const openManage = (client) => {
@@ -169,10 +223,18 @@ export default function MembershipManager() {
         <table>
           <thead>
             <tr>
-              <th>Customer</th>
-              <th>Phone</th>
-              <th>Membership status</th>
-              <th>Valid range</th>
+              <th onClick={() => handleSort("name")} style={{ cursor: "pointer", userSelect: "none" }}>
+                Customer {sortField === "name" ? (sortAsc ? "▲" : "▼") : ""}
+              </th>
+              <th onClick={() => handleSort("mobile")} style={{ cursor: "pointer", userSelect: "none" }}>
+                Phone {sortField === "mobile" ? (sortAsc ? "▲" : "▼") : ""}
+              </th>
+              <th onClick={() => handleSort("is_member")} style={{ cursor: "pointer", userSelect: "none" }}>
+                Membership Status {sortField === "is_member" ? (sortAsc ? "▲" : "▼") : ""}
+              </th>
+              <th onClick={() => handleSort("membership_end")} style={{ cursor: "pointer", userSelect: "none" }}>
+                Valid Range {sortField === "membership_end" ? (sortAsc ? "▲" : "▼") : ""}
+              </th>
               <th style={{ textAlign: "right" }}>Actions</th>
             </tr>
           </thead>
@@ -211,7 +273,7 @@ export default function MembershipManager() {
                     {client.is_member && client.membership_start && client.membership_end ? (
                       <div style={{ display: "flex", flexDirection: "column" }}>
                         <span style={{ fontSize: "0.7rem", color: "#666" }}>
-                          {new Date(client.membership_start).toLocaleDateString("en-IN")} to {new Date(client.membership_end).toLocaleDateString("en-IN")}
+                          {safeParseDate(client.membership_start).toLocaleDateString("en-IN")} to {safeParseDate(client.membership_end).toLocaleDateString("en-IN")}
                         </span>
                         {daysLeft >= 0 ? (
                           <span style={{ fontSize: "0.65rem", color: "#2e7d32", fontWeight: 500 }}>

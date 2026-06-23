@@ -368,6 +368,30 @@ export async function saveInvoice(payload) {
   return normInvoice({ ...invoice, customers: customer });
 }
 
+export async function deleteInvoice(id) {
+  const { data: inv, error: invError } = await t("invoices").select("customer_id").eq("id", id).maybeSingle();
+  if (invError) throw invError;
+
+  const { data: items, error: itemsError } = await t("invoice_items").select("*").eq("invoice_id", id);
+  if (itemsError) throw itemsError;
+
+  const productItems = (items || []).filter(item => item.item_type === "product" && item.inventory_id);
+  for (const pItem of productItems) {
+    const { data: invRow } = await t("inventory").select("stock_qty").eq("id", pItem.inventory_id).single();
+    if (invRow) {
+      const newQty = Number(invRow.stock_qty) + Number(pItem.quantity || 1);
+      await t("inventory").update({ stock_qty: newQty, updated_at: getISTDate().toISOString() }).eq("id", pItem.inventory_id);
+    }
+  }
+
+  const { error } = await t("invoices").delete().eq("id", id);
+  if (error) throw error;
+
+  if (inv?.customer_id) {
+    await refreshCustomerRollup(inv.customer_id);
+  }
+}
+
 export async function searchInvoices(term = "") {
   const query = t("invoices").select("*, customers(*)").order("billing_at", { ascending: false }).limit(100);
   if (!term.trim()) {
@@ -545,7 +569,12 @@ export function calculateInvoiceTotals(payload) {
         totalTax += tax;
       }
     } else {
-      totalTaxable += discountedTotal;
+      if (item.tax_inclusive !== false) {
+        const base = discountedTotal / 1.05;
+        totalTaxable += base;
+      } else {
+        totalTaxable += discountedTotal;
+      }
     }
   });
 

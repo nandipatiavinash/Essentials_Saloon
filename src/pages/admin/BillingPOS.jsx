@@ -3,7 +3,7 @@ import { Eye, Plus, Printer, Search, Send, Trash2 } from "lucide-react";
 import toast from "react-hot-toast";
 import { useAdmin } from "../../layouts/AdminLayout";
 import { useSearchParams } from "react-router-dom";
-import { calculateInvoiceTotals, fetchInvoiceDetails, findCustomerByPhone, saveInvoice, searchInvoices } from "../../lib/api";
+import { calculateInvoiceTotals, deleteInvoice, fetchInvoiceDetails, findCustomerByPhone, saveInvoice, searchInvoices } from "../../lib/api";
 import { buildWhatsAppLink, formatInvoiceMessage } from "../../lib/whatsapp";
 import SearchableStaffDropdown from "../../components/SearchableStaffDropdown";
 import SearchableServiceDropdown from "../../components/SearchableServiceDropdown";
@@ -108,9 +108,34 @@ export default function BillingPOS() {
     finally { setLoadingHistory(false); }
   };
 
+  const safeParseDate = (dateStr) => {
+    if (!dateStr) return new Date();
+    if (dateStr instanceof Date) return dateStr;
+    if (typeof dateStr === "string" && dateStr.includes("/")) {
+      const parts = dateStr.split("/");
+      if (parts.length === 3) {
+        let day = parseInt(parts[0], 10);
+        let month = parseInt(parts[1], 10) - 1;
+        let year = parseInt(parts[2], 10);
+        if (parts[2].length === 2) {
+          year += 2000;
+        }
+        return new Date(year, month, day);
+      }
+    }
+    const parsed = new Date(dateStr);
+    if (isNaN(parsed.getTime())) {
+      return new Date();
+    }
+    if (parsed.getFullYear() < 100) {
+      parsed.setFullYear(parsed.getFullYear() + 2000);
+    }
+    return parsed;
+  };
+
   const getDaysRemaining = (endDateStr) => {
     if (!endDateStr) return 0;
-    const end = new Date(endDateStr);
+    const end = safeParseDate(endDateStr);
     const today = new Date();
     end.setHours(0,0,0,0); today.setHours(0,0,0,0);
     return Math.ceil((end.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
@@ -407,7 +432,7 @@ export default function BillingPOS() {
                     ${item.item_type === "product" ? "[PKT] " : ""}${item.service_name}
                   </td>
                   <td style="text-align: center; vertical-align: top;">${item.quantity}</td>
-                  <td style="text-align: right; vertical-align: top;">Rs ${Number(item.price * item.quantity).toFixed(2)}</td>
+                  <td style="text-align: right; vertical-align: top;">Rs ${Number((item.item_type === "service" && item.tax_inclusive !== false ? (item.price / 1.05) : item.price) * item.quantity).toFixed(2)}</td>
                 </tr>
               `).join("")}
             </tbody>
@@ -507,6 +532,19 @@ export default function BillingPOS() {
     toast.success(`Loaded invoice ${invoiceData.invoice_number} for editing.`);
   };
 
+  const handleDeleteInvoice = async (invoiceId) => {
+    if (!window.confirm("Are you sure you want to delete/void this invoice? This action cannot be undone.")) return;
+    try {
+      await deleteInvoice(invoiceId);
+      toast.success("Invoice deleted successfully");
+      setViewInvoiceData(null);
+      loadHistory(search);
+      if (reload) reload();
+    } catch (err) {
+      toast.error(err.message || "Failed to delete invoice");
+    }
+  };
+
   const printInvoice = () => {
     if (invoice) {
       handlePrintThermal(invoice, invoiceItems);
@@ -594,7 +632,7 @@ export default function BillingPOS() {
                   {bill.membership_id && <span style={{ marginLeft: "10px", opacity: 0.8 }}>ID: {bill.membership_id}</span>}
                 </div>
                 {bill.membership_end && (
-                  <div>Expires: {new Date(bill.membership_end).toLocaleDateString("en-IN")} <span style={{ marginLeft: "8px", fontWeight: "bold" }}>({getDaysRemaining(bill.membership_end)} days left)</span></div>
+                  <div>Expires: {safeParseDate(bill.membership_end).toLocaleDateString("en-IN")} <span style={{ marginLeft: "8px", fontWeight: "bold" }}>({getDaysRemaining(bill.membership_end)} days left)</span></div>
                 )}
               </div>
             ) : (
@@ -854,7 +892,7 @@ export default function BillingPOS() {
                   {item.item_type === "product" && <span style={{ fontSize: "0.55rem", opacity: 0.7, marginRight: 3 }}>[PKT]</span>}
                   {item.service_name} x{item.quantity}
                 </span>
-                <strong>Rs {(Number(item.quantity || 1) * Number(item.price || 0)).toLocaleString("en-IN")}</strong>
+                <strong>Rs {Number((item.item_type === "service" && item.tax_inclusive !== false ? (item.price / 1.05) : item.price) * (item.quantity || 1)).toLocaleString("en-IN")}</strong>
               </div>
             ))}
           </div>
@@ -957,7 +995,7 @@ export default function BillingPOS() {
                         {item.service_name} x{item.quantity}
                         {item.staff_name && <small style={{ display: "block", color: "#888", fontSize: "0.65rem" }}>({item.staff_name})</small>}
                       </span>
-                      <strong>Rs {Number(item.price * item.quantity).toLocaleString("en-IN")}</strong>
+                      <strong>Rs {Number((item.item_type === "service" && item.tax_inclusive !== false ? (item.price / 1.05) : item.price) * item.quantity).toLocaleString("en-IN")}</strong>
                     </div>
                   ))}
                 </div>
@@ -996,14 +1034,24 @@ export default function BillingPOS() {
             </div>
             <div className="modal-footer">
               {new Date(viewInvoiceData.invoice.billing_at).toDateString() === new Date().toDateString() && (
-                <button 
-                  type="button" 
-                  className="tbl-btn" 
-                  style={{ background: "rgba(201,185,154,0.15)", border: "1px solid var(--gold)", color: "var(--gold)", fontWeight: "bold" }}
-                  onClick={() => handleEditInvoice(viewInvoiceData.invoice, viewInvoiceData.items)}
-                >
-                  Edit Invoice
-                </button>
+                <>
+                  <button 
+                    type="button" 
+                    className="tbl-btn" 
+                    style={{ background: "rgba(201,185,154,0.15)", border: "1px solid var(--gold)", color: "var(--gold)", fontWeight: "bold" }}
+                    onClick={() => handleEditInvoice(viewInvoiceData.invoice, viewInvoiceData.items)}
+                  >
+                    Edit Invoice
+                  </button>
+                  <button 
+                    type="button" 
+                    className="tbl-btn danger" 
+                    style={{ background: "rgba(211, 47, 47, 0.1)", border: "1px solid #d32f2f", color: "#d32f2f", fontWeight: "bold" }}
+                    onClick={() => handleDeleteInvoice(viewInvoiceData.invoice.id)}
+                  >
+                    Delete Invoice
+                  </button>
+                </>
               )}
               <button 
                 type="button" 
