@@ -64,7 +64,11 @@ export default function ServicesManager() {
           <div className="table-title">Manage Services</div>
           <div className="table-actions">
             <input type="search" className="admin-search" placeholder="Search..." value={search} onChange={e => setSearch(e.target.value)} />
-            <button className="btn-add" onClick={() => handleOpenModal({ name: "", category: categories?.[0]?.slug || "", price_from: 0, tax_inclusive: true, active: true })}>+ New Service</button>
+            <button className="btn-add" onClick={() => {
+              const defaultCat = categories?.[0]?.slug || "";
+              const isCombo = defaultCat.toLowerCase().includes("combo");
+              handleOpenModal({ name: "", category: defaultCat, price_from: 0, tax_inclusive: !isCombo, active: true });
+            }}>+ New Service</button>
           </div>
         </div>
         <table>
@@ -128,7 +132,11 @@ export default function ServicesManager() {
                 <div className="form-row">
                   <div className="form-group">
                     <label className="form-label">Category *</label>
-                    <select className="form-input" value={modalObj.category || ""} onChange={e => setModalObj({ ...modalObj, category: e.target.value })} required>
+                    <select className="form-input" value={modalObj.category || ""} onChange={e => {
+                      const cat = e.target.value;
+                      const isCombo = cat.toLowerCase().includes("combo");
+                      setModalObj({ ...modalObj, category: cat, tax_inclusive: !isCombo });
+                    }} required>
                       {categories?.map(c => <option key={c.id} value={c.slug}>{c.name}</option>)}
                     </select>
                   </div>

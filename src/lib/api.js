@@ -466,6 +466,7 @@ function toRow(d) {
     featured: !!d.featured,
     active: d.active !== false,
     image: d.image,
+    tax_inclusive: d.tax_inclusive !== false,
   };
 }
 function norm(row) {
