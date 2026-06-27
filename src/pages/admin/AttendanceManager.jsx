@@ -139,9 +139,11 @@ export default function AttendanceManager() {
   };
 
   const logCheckIn = async (staffId) => {
-    const now = new Date();
-    const time24 = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+    // Use the operator-entered check_in time if already set, otherwise use current time
     const currentLog = attendanceLogs[staffId] || { staff_id: staffId, date: date, notes: "", status: "present", check_in: null, check_out: null };
+    const now = new Date();
+    const time24 = currentLog.check_in ||
+      `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
     const log = {
       ...currentLog,
       check_in: time24,
@@ -167,8 +169,10 @@ export default function AttendanceManager() {
 
   const logCheckOut = async (staffId) => {
     const log = attendanceLogs[staffId] || { staff_id: staffId, date: date, notes: "", status: "present", check_in: null, check_out: null };
+    // Use operator-entered check_out time if already set, otherwise use current time
     const now = new Date();
-    const time24 = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+    const time24 = log.check_out ||
+      `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
 
     if (log.check_in) {
       const [inH, inM] = log.check_in.split(":").map(Number);
@@ -415,7 +419,8 @@ export default function AttendanceManager() {
                 <th>Status</th>
                 <th>Check-in Time</th>
                 <th>Check-out Time</th>
-                <th>Notes</th>
+                <th>Daily Notes</th>
+                <th style={{ textAlign: "center" }}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -450,46 +455,48 @@ export default function AttendanceManager() {
                       </select>
                     </td>
                     <td>
-                      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                        <span style={{ fontWeight: 600, fontSize: "0.75rem", minWidth: "60px", color: "var(--a-text)" }}>
-                          {format12HourTime(log.check_in)}
-                        </span>
-                        <button
-                          type="button"
-                          className="tbl-btn"
-                          style={{ padding: "0.3rem 0.5rem", fontSize: "0.65rem", background: "rgba(201,185,154,0.1)", border: "1px solid var(--gold)", color: "var(--gold)" }}
-                          disabled={log.status === "absent" || log.status === "leave" || saving}
-                          onClick={() => logCheckIn(s.id)}
-                        >
-                          Check In
-                        </button>
-                      </div>
+                      <input
+                        type="time"
+                        className="form-input"
+                        value={log.check_in || ""}
+                        onChange={e => handleFieldChange(s.id, "check_in", e.target.value)}
+                        disabled={log.status === "absent" || log.status === "leave" || saving}
+                      />
                     </td>
                     <td>
-                      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                        <span style={{ fontWeight: 600, fontSize: "0.75rem", minWidth: "60px", color: "var(--a-text)" }}>
-                          {format12HourTime(log.check_out)}
-                        </span>
-                        <button
-                          type="button"
-                          className="tbl-btn"
-                          style={{ padding: "0.3rem 0.5rem", fontSize: "0.65rem", background: "rgba(201,185,154,0.1)", border: "1px solid var(--gold)", color: "var(--gold)" }}
-                          disabled={!log.check_in || log.status === "absent" || log.status === "leave" || saving}
-                          onClick={() => logCheckOut(s.id)}
-                        >
-                          Check Out
-                        </button>
-                      </div>
+                      <input
+                        type="time"
+                        className="form-input"
+                        value={log.check_out || ""}
+                        onChange={e => handleFieldChange(s.id, "check_out", e.target.value)}
+                        disabled={!log.check_in || log.status === "absent" || log.status === "leave" || saving}
+                      />
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="tbl-btn danger"
+                        style={{ padding: "0.3rem 0.5rem", fontSize: "0.65rem" }}
+                        onClick={() => {
+                          // Clear the attendance entry for this staff on this date
+                          handleFieldChange(s.id, "check_in", null);
+                          handleFieldChange(s.id, "check_out", null);
+                          handleStatusChange(s.id, "absent");
+                        }}
+                        disabled={saving}
+                      >
+                        Delete
+                      </button>
                     </td>
 
                     <td>
-                      <input 
-                        type="text" 
-                        placeholder="Daily logs/details..." 
-                        className="form-input" 
-                        value={log.notes} 
-                        onChange={e => handleFieldChange(s.id, "notes", e.target.value)} 
-                        style={{ padding: "0.35rem 0.75rem", fontSize: "0.72rem" }} 
+                      <input
+                        type="text"
+                        placeholder="Notes..."
+                        className="form-input"
+                        value={log.notes || ""}
+                        onChange={e => handleFieldChange(s.id, "notes", e.target.value)}
+                        style={{ padding: "0.35rem 0.6rem", fontSize: "0.72rem", minWidth: "80px" }}
                       />
                     </td>
                   </tr>

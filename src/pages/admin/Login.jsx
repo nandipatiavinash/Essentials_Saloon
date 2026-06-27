@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 import toast from "react-hot-toast";
 
@@ -8,6 +8,8 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const sessionExpired = searchParams.get("expired") === "true";
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -20,7 +22,7 @@ export default function Login() {
     setLoading(true);
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     setLoading(false);
-    
+
     if (error) {
       toast.error(error.message);
     } else {
@@ -34,6 +36,25 @@ export default function Login() {
       <div className="login-card">
         <div className="login-logo">Essensuals<span>.</span></div>
         <div className="login-sub">Workspace</div>
+
+        {sessionExpired && (
+          <div
+            style={{
+              margin: "0 0 1rem 0",
+              padding: "0.75rem 1rem",
+              background: "rgba(245, 158, 11, 0.12)",
+              border: "1px solid rgba(245, 158, 11, 0.4)",
+              borderRadius: "6px",
+              color: "#f59e0b",
+              fontSize: "0.78rem",
+              lineHeight: 1.5,
+              textAlign: "center",
+            }}
+          >
+            ⚠️ Your session has expired. Please log in again to continue.
+          </div>
+        )}
+
         <form onSubmit={handleLogin}>
           <input
             className="login-input"

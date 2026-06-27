@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { Clock, MessageSquareText, Mail, FileText, Calendar, Send } from "lucide-react";
+import { Clock, MessageSquareText, Mail, FileText, Calendar, Send, TrendingUp, BarChart2, Download } from "lucide-react";
 import { useAdmin } from "../../layouts/AdminLayout";
 import { buildAnalytics, sendEodEmailReport, format12HourTime, logReport } from "../../lib/api";
 import { formatEodReportMessage, getWhatsAppProvider, buildWhatsAppLink } from "../../lib/whatsapp";
@@ -9,6 +9,9 @@ export default function ReportsManager() {
   const { invoices, customers, reportLogs, settings, staff, attendance, cashRegister, inventory } = useAdmin();
   const provider = getWhatsAppProvider(settings);
   
+  // Tab switcher
+  const [activeTab, setActiveTab] = useState("range"); // "range" | "monthly"
+
   // Date Range Filters for Metric Cards & Table
   const firstDayOfMonth = () => {
     const d = new Date();
@@ -16,6 +19,13 @@ export default function ReportsManager() {
   };
   const [startDate, setStartDate] = useState(firstDayOfMonth());
   const [endDate, setEndDate] = useState(new Date().toISOString().slice(0, 10));
+
+  // Monthly Report state
+  const currentMonthStr = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  };
+  const [selectedMonth, setSelectedMonth] = useState(currentMonthStr());
 
   // Date picker for daily EOD email
   const [emailReportDate, setEmailReportDate] = useState(new Date().toISOString().slice(0, 10));
@@ -864,6 +874,219 @@ export default function ReportsManager() {
     }
   };
 
+  // ─── Monthly Report Data ────────────────────────────────────────────────────
+  const monthlyData = useMemo(() => {
+    const [year, month] = selectedMonth.split("-").map(Number);
+    const prefix = selectedMonth; // "YYYY-MM"
+
+    const monthInvoices = (invoices || []).filter(inv => {
+      const d = inv.billing_at ? inv.billing_at.slice(0, 7) : "";
+      return d === prefix && inv.status !== "void";
+    });
+
+    let totalGross = 0, totalGST = 0, totalTips = 0, totalNet = 0;
+    const paymentMap = {};
+    const staffMap = {};
+    const serviceMap = {};
+    const productMap = {};
+    const dailyMap = {};
+
+    monthInvoices.forEach(inv => {
+      const gross = Number(inv.total || 0);
+      const gst = Number(inv.tax || 0);
+      const tip = Number(inv.tip || 0);
+      const net = gross - gst - tip;
+      totalGross += gross;
+      totalGST += gst;
+      totalTips += tip;
+      totalNet += net;
+
+      // Payment breakdown
+      const payment = inv.payment_method || "Unknown";
+      if (payment === "Cash + UPI" && inv.transaction_id && inv.transaction_id.includes("cash:")) {
+        inv.transaction_id.split("|").forEach(p => {
+          if (p.startsWith("cash:")) paymentMap["Cash"] = (paymentMap["Cash"] || 0) + (Number(p.replace("cash:", "")) || 0);
+          if (p.startsWith("upi:")) paymentMap["UPI"] = (paymentMap["UPI"] || 0) + (Number(p.replace("upi:", "")) || 0);
+        });
+      } else {
+        paymentMap[payment] = (paymentMap[payment] || 0) + gross;
+      }
+
+      // Daily totals
+      const day = inv.billing_at ? inv.billing_at.slice(0, 10) : "?";
+      if (!dailyMap[day]) dailyMap[day] = { gross: 0, bills: 0 };
+      dailyMap[day].gross += gross;
+      dailyMap[day].bills += 1;
+
+      // Staff & items
+      const mainStylist = inv.staff_name || "Unknown";
+      if (!staffMap[mainStylist]) staffMap[mainStylist] = { bills: 0, services: 0, products: 0, tips: 0, total: 0 };
+      staffMap[mainStylist].bills += 1;
+      staffMap[mainStylist].tips += tip;
+      staffMap[mainStylist].total += tip;
+
+      (inv.invoice_items || []).forEach(item => {
+        if (item.item_type === "membership") return;
+        const qty = Number(item.quantity || 1);
+        const val = qty * Number(item.price || 0);
+        const itemStaff = item.staff_name || mainStylist;
+        if (!staffMap[itemStaff]) staffMap[itemStaff] = { bills: 0, services: 0, products: 0, tips: 0, total: 0 };
+        if (item.item_type === "product") {
+          staffMap[itemStaff].products += val;
+          if (!productMap[item.service_name]) productMap[item.service_name] = { qty: 0, total: 0 };
+          productMap[item.service_name].qty += qty;
+          productMap[item.service_name].total += val;
+        } else {
+          staffMap[itemStaff].services += val;
+          if (!serviceMap[item.service_name]) serviceMap[item.service_name] = { qty: 0, total: 0 };
+          serviceMap[item.service_name].qty += qty;
+          serviceMap[item.service_name].total += val;
+        }
+        staffMap[itemStaff].total += val;
+      });
+    });
+
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const workingDays = monthInvoices.length > 0
+      ? Object.keys(dailyMap).length
+      : 0;
+    const avgDailyRevenue = workingDays > 0 ? totalGross / workingDays : 0;
+
+    return {
+      totalGross,
+      totalGST,
+      totalTips,
+      totalNet,
+      totalBills: monthInvoices.length,
+      avgDailyRevenue,
+      workingDays,
+      daysInMonth,
+      paymentMap,
+      staffMap,
+      serviceMap,
+      productMap,
+      dailyMap,
+    };
+  }, [invoices, selectedMonth]);
+
+  // ─── Monthly PDF Export ─────────────────────────────────────────────────────
+  const handleMonthlyPDF = () => {
+    const m = monthlyData;
+    if (!m.totalBills) { toast.error("No invoices for the selected month."); return; }
+    const [year, mo] = selectedMonth.split("-");
+    const label = new Date(`${selectedMonth}-01`).toLocaleDateString("en-IN", { month: "long", year: "numeric" });
+    const salonName = settings?.name || "Toni & Guy Essensuals Gorantla";
+
+    const topServices = Object.entries(m.serviceMap).sort((a,b)=>b[1].total-a[1].total).slice(0,10);
+    const topProducts = Object.entries(m.productMap).sort((a,b)=>b[1].total-a[1].total).slice(0,10);
+    const staffRows = Object.entries(m.staffMap).sort((a,b)=>b[1].total-a[1].total);
+
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) { toast.error("Popups blocked. Please allow popups."); return; }
+
+    printWindow.document.write(`
+<!DOCTYPE html><html><head>
+<title>Monthly Report – ${label}</title>
+<style>
+@media print{@page{margin:15mm}body{padding:0}}
+body{font-family:-apple-system,sans-serif;padding:20mm;color:#000;line-height:1.4;font-size:12px}
+h1{font-size:22px;margin:0;letter-spacing:2px;text-transform:uppercase}
+.sub{font-size:11px;color:#555;margin:4px 0 0}
+.divider{height:2px;background:#000;margin:14px 0 30px}
+.kpi-row{display:flex;gap:20px;margin-bottom:30px;page-break-inside:avoid}
+.kpi{flex:1;border:1px solid #000;padding:12px;border-radius:4px}
+.kpi-label{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#555}
+.kpi-val{font-size:20px;font-weight:bold;margin-top:4px}
+h2{font-size:13px;font-weight:700;text-transform:uppercase;border-bottom:1px solid #000;padding-bottom:4px;margin:24px 0 10px;letter-spacing:1px}
+table{width:100%;border-collapse:collapse;font-size:11px}
+th,td{border:1px solid #000;padding:7px 8px;text-align:left}
+th{font-weight:600;background:#f5f5f5}
+.right{text-align:right}
+.footer{margin-top:40px;border-top:1px solid #ccc;padding-top:10px;font-size:10px;color:#777;text-align:center}
+.no-print{margin-bottom:16px;text-align:center;font-family:sans-serif}
+</style></head><body>
+<div class="no-print"><button onclick="window.print()" style="padding:6px 12px;cursor:pointer;font-weight:bold;">Print / Save PDF</button><button onclick="window.close()" style="padding:6px 12px;margin-left:10px;cursor:pointer;">Close</button></div>
+<h1>TONI &amp; GUY – Monthly Business Report</h1>
+<p class="sub">Essensuals Gorantla &nbsp;|&nbsp; ${label} &nbsp;|&nbsp; Generated: ${new Date().toLocaleString("en-IN")}</p>
+<div class="divider"></div>
+
+<div class="kpi-row">
+  <div class="kpi"><div class="kpi-label">Gross Revenue</div><div class="kpi-val">Rs ${m.totalGross.toLocaleString("en-IN")}</div></div>
+  <div class="kpi"><div class="kpi-label">Net Sales</div><div class="kpi-val">Rs ${m.totalNet.toLocaleString("en-IN")}</div></div>
+  <div class="kpi"><div class="kpi-label">GST Collected</div><div class="kpi-val">Rs ${m.totalGST.toLocaleString("en-IN")}</div></div>
+  <div class="kpi"><div class="kpi-label">Tips</div><div class="kpi-val">Rs ${m.totalTips.toLocaleString("en-IN")}</div></div>
+</div>
+<div class="kpi-row">
+  <div class="kpi"><div class="kpi-label">Total Bills</div><div class="kpi-val">${m.totalBills}</div></div>
+  <div class="kpi"><div class="kpi-label">Working Days</div><div class="kpi-val">${m.workingDays}</div></div>
+  <div class="kpi"><div class="kpi-label">Avg Daily Revenue</div><div class="kpi-val">Rs ${Math.round(m.avgDailyRevenue).toLocaleString("en-IN")}</div></div>
+  <div class="kpi"><div class="kpi-label">Avg Bill Value</div><div class="kpi-val">Rs ${m.totalBills ? Math.round(m.totalGross/m.totalBills).toLocaleString("en-IN") : 0}</div></div>
+</div>
+
+<h2>Payment Breakdown</h2>
+<table><thead><tr><th>Method</th><th class="right">Amount (Rs)</th><th class="right">Share (%)</th></tr></thead><tbody>
+${Object.entries(m.paymentMap).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<tr><td>${k}</td><td class="right">${v.toLocaleString("en-IN")}</td><td class="right">${m.totalGross?((v/m.totalGross)*100).toFixed(1):0}%</td></tr>`).join("")}
+</tbody></table>
+
+<h2>Top Services</h2>
+<table><thead><tr><th>Service Name</th><th class="right">Qty</th><th class="right">Revenue (Rs)</th></tr></thead><tbody>
+${topServices.map(([k,v])=>`<tr><td>${k}</td><td class="right">${v.qty}</td><td class="right">${v.total.toLocaleString("en-IN")}</td></tr>`).join("") || "<tr><td colspan='3'>No services</td></tr>"}
+</tbody></table>
+
+<h2>Top Products Sold</h2>
+<table><thead><tr><th>Product Name</th><th class="right">Qty</th><th class="right">Revenue (Rs)</th></tr></thead><tbody>
+${topProducts.map(([k,v])=>`<tr><td>${k}</td><td class="right">${v.qty}</td><td class="right">${v.total.toLocaleString("en-IN")}</td></tr>`).join("") || "<tr><td colspan='3'>No products</td></tr>"}
+</tbody></table>
+
+<h2>Stylist Performance</h2>
+<table><thead><tr><th>Stylist</th><th class="right">Bills</th><th class="right">Services (Rs)</th><th class="right">Products (Rs)</th><th class="right">Tips (Rs)</th><th class="right">Total (Rs)</th></tr></thead><tbody>
+${staffRows.map(([k,v])=>`<tr><td>${k}</td><td class="right">${v.bills}</td><td class="right">${v.services.toLocaleString("en-IN")}</td><td class="right">${v.products.toLocaleString("en-IN")}</td><td class="right">${v.tips.toLocaleString("en-IN")}</td><td class="right"><strong>${v.total.toLocaleString("en-IN")}</strong></td></tr>`).join("") || "<tr><td colspan='6'>No staff data</td></tr>"}
+</tbody></table>
+
+<div class="footer">Report generated by Essensuals Admin POS. All amounts in INR (Rs).</div>
+</body></html>`);
+    printWindow.document.close();
+    setTimeout(() => printWindow.print(), 500);
+  };
+
+  // ─── Monthly CSV Export ─────────────────────────────────────────────────────
+  const handleMonthlyCSV = () => {
+    const m = monthlyData;
+    if (!m.totalBills) { toast.error("No invoices for the selected month."); return; }
+    const label = new Date(`${selectedMonth}-01`).toLocaleDateString("en-IN", { month: "long", year: "numeric" });
+    const lines = [];
+    lines.push(`"MONTHLY BUSINESS REPORT – ${label}"`);
+    lines.push(`"Generated","${new Date().toLocaleString("en-IN")}"`);
+    lines.push("");
+    lines.push(`"Gross Revenue","${m.totalGross}"`);
+    lines.push(`"Net Sales","${m.totalNet}"`);
+    lines.push(`"GST Collected","${m.totalGST}"`);
+    lines.push(`"Tips","${m.totalTips}"`);
+    lines.push(`"Total Bills","${m.totalBills}"`);
+    lines.push(`"Working Days","${m.workingDays}"`);
+    lines.push(`"Avg Daily Revenue","${Math.round(m.avgDailyRevenue)}"`);
+    lines.push("");
+    lines.push(`"PAYMENT BREAKDOWN"`);
+    lines.push(`"Method","Amount"`);
+    Object.entries(m.paymentMap).forEach(([k,v]) => lines.push(`"${k}","${v}"`));
+    lines.push("");
+    lines.push(`"TOP SERVICES"`);
+    lines.push(`"Service","Qty","Revenue"`);
+    Object.entries(m.serviceMap).sort((a,b)=>b[1].total-a[1].total).forEach(([k,v]) => lines.push(`"${k}","${v.qty}","${v.total}"`));
+    lines.push("");
+    lines.push(`"STYLIST PERFORMANCE"`);
+    lines.push(`"Stylist","Bills","Services","Products","Tips","Total"`);
+    Object.entries(m.staffMap).forEach(([k,v]) => lines.push(`"${k}","${v.bills}","${v.services}","${v.products}","${v.tips}","${v.total}"`));
+    const uri = "data:text/csv;charset=utf-8,\uFEFF" + encodeURIComponent(lines.join("\n"));
+    const a = document.createElement("a");
+    a.href = uri;
+    a.download = `Monthly_Report_${selectedMonth}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    toast.success("Monthly CSV downloaded!");
+  };
+
   const formatDate = (d) => {
     if (!d) return "—";
     return new Date(d).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
@@ -871,6 +1094,29 @@ export default function ReportsManager() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "2rem" }}>
+      {/* ── Tab Switcher ── */}
+      <div style={{ display: "flex", gap: "0.75rem", borderBottom: "1px solid var(--a-border)", paddingBottom: "0", flexWrap: "wrap" }}>
+        <button
+          className={`tbl-btn ${activeTab === "range" ? "active" : ""}`}
+          onClick={() => setActiveTab("range")}
+          style={{ padding: "0.55rem 1.1rem", fontSize: "0.78rem", borderBottom: activeTab === "range" ? "2px solid var(--gold)" : "2px solid transparent", borderRadius: "0", background: "none" }}
+        >
+          <FileText size={13} style={{ marginRight: 6 }} />
+          Range &amp; EOD Reports
+        </button>
+        <button
+          className={`tbl-btn ${activeTab === "monthly" ? "active" : ""}`}
+          onClick={() => setActiveTab("monthly")}
+          style={{ padding: "0.55rem 1.1rem", fontSize: "0.78rem", borderBottom: activeTab === "monthly" ? "2px solid var(--gold)" : "2px solid transparent", borderRadius: "0", background: "none" }}
+        >
+          <BarChart2 size={13} style={{ marginRight: 6 }} />
+          Monthly Business Report
+        </button>
+      </div>
+
+      {/* ──────────────────── RANGE & EOD TAB ────────────────────────────── */}
+      {activeTab === "range" && (
+        <>
       {/* Date Range Selection & Metrics */}
       <div className="table-wrap">
         <div className="table-header" style={{ paddingBottom: "1.5rem" }}>
@@ -1074,6 +1320,244 @@ export default function ReportsManager() {
           </tbody>
         </table>
       </div>
+      </>
+      )}
+
+      {/* ──────────────────── MONTHLY REPORT TAB ─────────────────────────── */}
+      {activeTab === "monthly" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "2rem" }}>
+
+          {/* Header + Controls */}
+          <div className="table-wrap">
+            <div className="table-header" style={{ flexWrap: "wrap", gap: "1rem", paddingBottom: "1.5rem" }}>
+              <div>
+                <div className="table-title"><BarChart2 size={15} style={{ marginRight: 6 }} />Monthly Business Report</div>
+                <div className="pos-sub">Full month aggregated analytics – revenue, GST, staff & service breakdown</div>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                  <span style={{ fontSize: "0.72rem", color: "#888" }}>Month:</span>
+                  <input
+                    type="month"
+                    className="form-input"
+                    value={selectedMonth}
+                    onChange={e => setSelectedMonth(e.target.value)}
+                    style={{ padding: "0.4rem 0.75rem", fontSize: "0.75rem", width: "150px" }}
+                  />
+                </div>
+                <button className="btn-add" onClick={handleMonthlyPDF} style={{ padding: "0.45rem 1rem", fontSize: "0.75rem", display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                  <Download size={13} /> Export PDF
+                </button>
+                <button className="tbl-btn" onClick={handleMonthlyCSV} style={{ padding: "0.45rem 1rem", fontSize: "0.75rem", display: "flex", alignItems: "center", gap: "0.4rem", border: "1px solid var(--a-border)" }}>
+                  <Download size={13} /> Export CSV
+                </button>
+              </div>
+            </div>
+
+            {/* KPI Cards */}
+            <div className="stats-grid" style={{ padding: "1.5rem", borderTop: "1px solid var(--a-border)", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: "1rem" }}>
+              {[
+                { label: "Gross Revenue", value: `Rs ${monthlyData.totalGross.toLocaleString("en-IN")}`, sub: "Total collected" },
+                { label: "Net Sales", value: `Rs ${monthlyData.totalNet.toLocaleString("en-IN")}`, sub: "Before GST & tips" },
+                { label: "GST Collected", value: `Rs ${monthlyData.totalGST.toLocaleString("en-IN")}`, sub: "5% GST component" },
+                { label: "Tips Received", value: `Rs ${monthlyData.totalTips.toLocaleString("en-IN")}`, sub: "Stylist tips" },
+                { label: "Total Bills", value: monthlyData.totalBills, sub: `${monthlyData.workingDays} working days` },
+                { label: "Avg Daily Revenue", value: `Rs ${Math.round(monthlyData.avgDailyRevenue).toLocaleString("en-IN")}`, sub: "Per working day" },
+                { label: "Avg Bill Value", value: `Rs ${monthlyData.totalBills ? Math.round(monthlyData.totalGross / monthlyData.totalBills).toLocaleString("en-IN") : 0}`, sub: "Per invoice" },
+              ].map(card => (
+                <div key={card.label} className="stat-card" style={{ minWidth: 0 }}>
+                  <div className="stat-label" style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{card.label}</div>
+                  <div className="stat-value" style={{ color: "var(--a-text)", fontSize: "clamp(1rem, 2.5vw, 1.4rem)" }}>{card.value}</div>
+                  <div className="stat-sub">{card.sub}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Payment Breakdown + Top Services */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "2rem" }}>
+            {/* Payment breakdown */}
+            <div className="table-wrap">
+              <div className="table-header">
+                <div className="table-title" style={{ fontSize: "0.9rem" }}>Payment Breakdown</div>
+              </div>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Payment Method</th>
+                    <th style={{ textAlign: "right" }}>Amount (Rs)</th>
+                    <th style={{ textAlign: "right" }}>Share</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.entries(monthlyData.paymentMap).length === 0 && (
+                    <tr><td colSpan={3} style={{ textAlign: "center", padding: "2rem", color: "var(--a-muted)" }}>No payments recorded.</td></tr>
+                  )}
+                  {Object.entries(monthlyData.paymentMap)
+                    .sort((a, b) => b[1] - a[1])
+                    .map(([method, amt]) => (
+                      <tr key={method}>
+                        <td style={{ fontWeight: 600 }}>{method}</td>
+                        <td style={{ textAlign: "right" }}>Rs {amt.toLocaleString("en-IN")}</td>
+                        <td style={{ textAlign: "right", color: "var(--a-muted)" }}>
+                          {monthlyData.totalGross ? ((amt / monthlyData.totalGross) * 100).toFixed(1) : 0}%
+                        </td>
+                      </tr>
+                    ))}
+                  {Object.keys(monthlyData.paymentMap).length > 0 && (
+                    <tr style={{ borderTop: "2px solid var(--a-border)" }}>
+                      <td style={{ fontWeight: 700 }}>Total</td>
+                      <td style={{ textAlign: "right", fontWeight: 700 }}>Rs {monthlyData.totalGross.toLocaleString("en-IN")}</td>
+                      <td style={{ textAlign: "right", fontWeight: 700 }}>100%</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Top Services */}
+            <div className="table-wrap">
+              <div className="table-header">
+                <div className="table-title" style={{ fontSize: "0.9rem" }}>Top Services</div>
+              </div>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Service Name</th>
+                    <th style={{ textAlign: "right" }}>Qty</th>
+                    <th style={{ textAlign: "right" }}>Revenue (Rs)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.entries(monthlyData.serviceMap).length === 0 && (
+                    <tr><td colSpan={3} style={{ textAlign: "center", padding: "2rem", color: "var(--a-muted)" }}>No services this month.</td></tr>
+                  )}
+                  {Object.entries(monthlyData.serviceMap)
+                    .sort((a, b) => b[1].total - a[1].total)
+                    .slice(0, 12)
+                    .map(([name, s]) => (
+                      <tr key={name}>
+                        <td style={{ fontWeight: 600 }}>{name}</td>
+                        <td style={{ textAlign: "right" }}>{s.qty}</td>
+                        <td style={{ textAlign: "right" }}>Rs {s.total.toLocaleString("en-IN")}</td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Products sold */}
+          {Object.keys(monthlyData.productMap).length > 0 && (
+            <div className="table-wrap">
+              <div className="table-header">
+                <div className="table-title" style={{ fontSize: "0.9rem" }}>Products Sold This Month</div>
+              </div>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Product Name</th>
+                    <th style={{ textAlign: "right" }}>Qty Sold</th>
+                    <th style={{ textAlign: "right" }}>Revenue (Rs)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.entries(monthlyData.productMap)
+                    .sort((a, b) => b[1].total - a[1].total)
+                    .map(([name, p]) => (
+                      <tr key={name}>
+                        <td style={{ fontWeight: 600 }}>{name}</td>
+                        <td style={{ textAlign: "right" }}>{p.qty}</td>
+                        <td style={{ textAlign: "right" }}>Rs {p.total.toLocaleString("en-IN")}</td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Stylist Performance */}
+          <div className="table-wrap">
+            <div className="table-header">
+              <div className="table-title" style={{ fontSize: "0.9rem" }}>Stylist Performance – {new Date(`${selectedMonth}-01`).toLocaleDateString("en-IN", { month: "long", year: "numeric" })}</div>
+            </div>
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ minWidth: "600px" }}>
+                <thead>
+                  <tr>
+                    <th>Stylist Name</th>
+                    <th style={{ textAlign: "right" }}>Bills</th>
+                    <th style={{ textAlign: "right" }}>Services (Rs)</th>
+                    <th style={{ textAlign: "right" }}>Products (Rs)</th>
+                    <th style={{ textAlign: "right" }}>Tips (Rs)</th>
+                    <th style={{ textAlign: "right" }}>Total (Rs)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.entries(monthlyData.staffMap).length === 0 && (
+                    <tr><td colSpan={6} style={{ textAlign: "center", padding: "2rem", color: "var(--a-muted)" }}>No staff data this month.</td></tr>
+                  )}
+                  {Object.entries(monthlyData.staffMap)
+                    .sort((a, b) => b[1].total - a[1].total)
+                    .map(([name, s]) => (
+                      <tr key={name}>
+                        <td style={{ fontWeight: 600 }}>{name}</td>
+                        <td style={{ textAlign: "right" }}>{s.bills}</td>
+                        <td style={{ textAlign: "right" }}>Rs {s.services.toLocaleString("en-IN")}</td>
+                        <td style={{ textAlign: "right" }}>Rs {s.products.toLocaleString("en-IN")}</td>
+                        <td style={{ textAlign: "right" }}>Rs {s.tips.toLocaleString("en-IN")}</td>
+                        <td style={{ textAlign: "right", fontWeight: 700 }}>Rs {s.total.toLocaleString("en-IN")}</td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Daily Revenue Breakdown */}
+          <div className="table-wrap">
+            <div className="table-header">
+              <div className="table-title" style={{ fontSize: "0.9rem" }}>Daily Revenue Breakdown</div>
+            </div>
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ minWidth: "400px" }}>
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th style={{ textAlign: "right" }}>Bills</th>
+                    <th style={{ textAlign: "right" }}>Gross Revenue (Rs)</th>
+                    <th style={{ textAlign: "right" }}>Avg per Bill (Rs)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.entries(monthlyData.dailyMap).length === 0 && (
+                    <tr><td colSpan={4} style={{ textAlign: "center", padding: "2rem", color: "var(--a-muted)" }}>No daily data this month.</td></tr>
+                  )}
+                  {Object.entries(monthlyData.dailyMap)
+                    .sort((a, b) => a[0].localeCompare(b[0]))
+                    .map(([day, d]) => (
+                      <tr key={day}>
+                        <td style={{ fontWeight: 600 }}>{new Date(day + "T00:00:00").toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" })}</td>
+                        <td style={{ textAlign: "right" }}>{d.bills}</td>
+                        <td style={{ textAlign: "right" }}>Rs {d.gross.toLocaleString("en-IN")}</td>
+                        <td style={{ textAlign: "right", color: "var(--a-muted)" }}>Rs {Math.round(d.gross / d.bills).toLocaleString("en-IN")}</td>
+                      </tr>
+                    ))}
+                  {Object.keys(monthlyData.dailyMap).length > 0 && (
+                    <tr style={{ borderTop: "2px solid var(--a-border)" }}>
+                      <td style={{ fontWeight: 700 }}>Monthly Total</td>
+                      <td style={{ textAlign: "right", fontWeight: 700 }}>{monthlyData.totalBills}</td>
+                      <td style={{ textAlign: "right", fontWeight: 700 }}>Rs {monthlyData.totalGross.toLocaleString("en-IN")}</td>
+                      <td style={{ textAlign: "right", fontWeight: 700 }}>Rs {monthlyData.totalBills ? Math.round(monthlyData.totalGross / monthlyData.totalBills).toLocaleString("en-IN") : 0}</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+        </div>
+      )}
     </div>
   );
 }
