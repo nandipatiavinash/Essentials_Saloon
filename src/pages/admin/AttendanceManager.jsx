@@ -454,41 +454,67 @@ export default function AttendanceManager() {
                         <option value="leave">Leave</option>
                       </select>
                     </td>
+                    {/* Check-in: editable time input + Check In button */}
                     <td>
-                      <input
-                        type="time"
-                        className="form-input"
-                        value={log.check_in || ""}
-                        onChange={e => handleFieldChange(s.id, "check_in", e.target.value)}
-                        disabled={log.status === "absent" || log.status === "leave" || saving}
-                      />
-                    </td>
-                    <td>
-                      <input
-                        type="time"
-                        className="form-input"
-                        value={log.check_out || ""}
-                        onChange={e => handleFieldChange(s.id, "check_out", e.target.value)}
-                        disabled={!log.check_in || log.status === "absent" || log.status === "leave" || saving}
-                      />
-                    </td>
-                    <td>
-                      <button
-                        type="button"
-                        className="tbl-btn danger"
-                        style={{ padding: "0.3rem 0.5rem", fontSize: "0.65rem" }}
-                        onClick={() => {
-                          // Clear the attendance entry for this staff on this date
-                          handleFieldChange(s.id, "check_in", null);
-                          handleFieldChange(s.id, "check_out", null);
-                          handleStatusChange(s.id, "absent");
-                        }}
-                        disabled={saving}
-                      >
-                        Delete
-                      </button>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem", minWidth: "120px" }}>
+                        <input
+                          type="time"
+                          className="form-input"
+                          value={log.check_in || ""}
+                          onChange={e => handleFieldChange(s.id, "check_in", e.target.value)}
+                          disabled={log.status === "absent" || log.status === "leave" || saving}
+                          style={{ padding: "0.3rem 0.5rem", fontSize: "0.72rem" }}
+                        />
+                        <button
+                          type="button"
+                          className="tbl-btn"
+                          style={{
+                            padding: "0.25rem 0.5rem",
+                            fontSize: "0.65rem",
+                            background: "rgba(201,185,154,0.12)",
+                            border: "1px solid var(--gold)",
+                            color: "var(--gold)",
+                            width: "100%",
+                          }}
+                          disabled={log.status === "absent" || log.status === "leave" || saving}
+                          onClick={() => logCheckIn(s.id)}
+                        >
+                          ✓ Check In
+                        </button>
+                      </div>
                     </td>
 
+                    {/* Check-out: editable time input + Check Out button */}
+                    <td>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem", minWidth: "120px" }}>
+                        <input
+                          type="time"
+                          className="form-input"
+                          value={log.check_out || ""}
+                          onChange={e => handleFieldChange(s.id, "check_out", e.target.value)}
+                          disabled={!log.check_in || log.status === "absent" || log.status === "leave" || saving}
+                          style={{ padding: "0.3rem 0.5rem", fontSize: "0.72rem" }}
+                        />
+                        <button
+                          type="button"
+                          className="tbl-btn"
+                          style={{
+                            padding: "0.25rem 0.5rem",
+                            fontSize: "0.65rem",
+                            background: "rgba(201,185,154,0.12)",
+                            border: "1px solid var(--gold)",
+                            color: "var(--gold)",
+                            width: "100%",
+                          }}
+                          disabled={!log.check_in || log.status === "absent" || log.status === "leave" || saving}
+                          onClick={() => logCheckOut(s.id)}
+                        >
+                          ✓ Check Out
+                        </button>
+                      </div>
+                    </td>
+
+                    {/* Notes */}
                     <td>
                       <input
                         type="text"
@@ -498,6 +524,24 @@ export default function AttendanceManager() {
                         onChange={e => handleFieldChange(s.id, "notes", e.target.value)}
                         style={{ padding: "0.35rem 0.6rem", fontSize: "0.72rem", minWidth: "80px" }}
                       />
+                    </td>
+
+                    {/* Actions – Delete */}
+                    <td style={{ textAlign: "center" }}>
+                      <button
+                        type="button"
+                        className="tbl-btn danger"
+                        style={{ padding: "0.3rem 0.6rem", fontSize: "0.65rem" }}
+                        title="Clear this operator's attendance for today"
+                        onClick={() => {
+                          handleFieldChange(s.id, "check_in", null);
+                          handleFieldChange(s.id, "check_out", null);
+                          handleStatusChange(s.id, "absent");
+                        }}
+                        disabled={saving}
+                      >
+                        Delete
+                      </button>
                     </td>
                   </tr>
                 );
