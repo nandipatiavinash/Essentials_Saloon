@@ -297,7 +297,7 @@ export async function saveInvoice(payload) {
   if (customerError) throw customerError;
 
   const invoiceRow = {
-    invoice_number: payload.invoice_number || await makeInvoiceNumber(),
+    invoice_number: payload.invoice_number || await makeInvoiceNumber(payload.billing_at),
     customer_id: customer.id,
     client_name: payload.client_name.trim(),
     mobile,
@@ -724,9 +724,16 @@ function normalizePhone(phone = "") {
   return digits.length > 10 ? digits.slice(-10) : digits;
 }
 
-async function makeInvoiceNumber() {
-  const today = getISTDate().toISOString().slice(0, 10).replaceAll("-", ""); // YYYYMMDD
-  const prefix = `INV-${today}-`;
+async function makeInvoiceNumber(billingAt) {
+  // Use the billing date if provided, otherwise fall back to today (IST)
+  let dateStr;
+  if (billingAt) {
+    // billingAt may be an ISO string (with or without time) or a plain date string
+    dateStr = String(billingAt).slice(0, 10).replaceAll("-", ""); // YYYYMMDD
+  } else {
+    dateStr = getISTDate().toISOString().slice(0, 10).replaceAll("-", "");
+  }
+  const prefix = `INV-${dateStr}-`;
   const { data, error } = await supabase
     .from("invoices")
     .select("invoice_number")

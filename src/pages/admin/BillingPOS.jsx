@@ -28,7 +28,7 @@ const emptyBill = () => ({
   transaction_id: "",
   notes: "",
   staff_name: "",
-  billing_at: new Date().toISOString().slice(0, 16),
+  billing_at: new Date().toISOString().slice(0, 10),
 });
 
 export default function BillingPOS() {
@@ -276,7 +276,9 @@ export default function BillingPOS() {
       const saved = await saveInvoice({
         ...bill,
         transaction_id: transactionId,
-        billing_at: new Date(bill.billing_at).toISOString()
+        billing_at: bill.billing_at
+          ? new Date(bill.billing_at + "T12:00:00+05:30").toISOString()
+          : new Date().toISOString()
       });
       setInvoice(saved);
       setInvoiceItems(bill.items.map((item) => ({ ...item, total: Number(item.quantity || 1) * Number(item.price || 0) })));
@@ -525,7 +527,7 @@ export default function BillingPOS() {
       membership_id: invoiceData.customer?.membership_id || "",
       membership_end: invoiceData.customer?.membership_end || "",
       staff_name: invoiceData.staff_name,
-      billing_at: new Date(invoiceData.billing_at).toISOString().slice(0, 16),
+      billing_at: new Date(invoiceData.billing_at).toISOString().slice(0, 10),
       discount: String(discountPct),
       tip: String(invoiceData.tip || 0),
       tax_enabled: Number(invoiceData.tax_rate || 0) > 0,
@@ -705,8 +707,13 @@ export default function BillingPOS() {
                 <SearchableStaffDropdown staffList={presentStaff} value={bill.staff_name} onChange={(val) => setBill({ ...bill, staff_name: val })} placeholder="Select Staff" isInvalid={attemptedSubmit && !bill.staff_name} />
               </div>
               <div className="form-group">
-                <label className="form-label">Billing Date/Time</label>
-                <input type="datetime-local" className="form-input" value={bill.billing_at} onChange={(e) => setBill({ ...bill, billing_at: e.target.value })} />
+                <label className="form-label">Billing Date</label>
+                <input
+                  type="date"
+                  className="form-input"
+                  value={bill.billing_at}
+                  onChange={(e) => setBill({ ...bill, billing_at: e.target.value })}
+                />
               </div>
             </div>
           </div>
