@@ -985,66 +985,320 @@ export default function ReportsManager() {
     if (!printWindow) { toast.error("Popups blocked. Please allow popups."); return; }
 
     printWindow.document.write(`
-<!DOCTYPE html><html><head>
-<title>Monthly Report – ${label}</title>
-<style>
-@media print{@page{margin:15mm}body{padding:0}}
-body{font-family:-apple-system,sans-serif;padding:20mm;color:#000;line-height:1.4;font-size:12px}
-h1{font-size:22px;margin:0;letter-spacing:2px;text-transform:uppercase}
-.sub{font-size:11px;color:#555;margin:4px 0 0}
-.divider{height:2px;background:#000;margin:14px 0 30px}
-.kpi-row{display:flex;gap:20px;margin-bottom:30px;page-break-inside:avoid}
-.kpi{flex:1;border:1px solid #000;padding:12px;border-radius:4px}
-.kpi-label{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#555}
-.kpi-val{font-size:20px;font-weight:bold;margin-top:4px}
-h2{font-size:13px;font-weight:700;text-transform:uppercase;border-bottom:1px solid #000;padding-bottom:4px;margin:24px 0 10px;letter-spacing:1px}
-table{width:100%;border-collapse:collapse;font-size:11px}
-th,td{border:1px solid #000;padding:7px 8px;text-align:left}
-th{font-weight:600;background:#f5f5f5}
-.right{text-align:right}
-.footer{margin-top:40px;border-top:1px solid #ccc;padding-top:10px;font-size:10px;color:#777;text-align:center}
-.no-print{margin-bottom:16px;text-align:center;font-family:sans-serif}
-</style></head><body>
-<div class="no-print"><button onclick="window.print()" style="padding:6px 12px;cursor:pointer;font-weight:bold;">Print / Save PDF</button><button onclick="window.close()" style="padding:6px 12px;margin-left:10px;cursor:pointer;">Close</button></div>
-<h1>TONI &amp; GUY – Monthly Business Report</h1>
-<p class="sub">Essensuals Gorantla &nbsp;|&nbsp; ${label} &nbsp;|&nbsp; Generated: ${new Date().toLocaleString("en-IN")}</p>
-<div class="divider"></div>
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Monthly Report – ${label}</title>
+  <style>
+    /* Suppress browser default header and footer */
+    @page {
+      size: A4;
+      margin: 0mm !important;
+    }
+    
+    @media print {
+      body {
+        padding: 15mm 20mm !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      .no-print {
+        display: none !important;
+      }
+    }
 
-<div class="kpi-row">
-  <div class="kpi"><div class="kpi-label">Gross Revenue</div><div class="kpi-val">Rs ${m.totalGross.toLocaleString("en-IN")}</div></div>
-  <div class="kpi"><div class="kpi-label">Net Sales</div><div class="kpi-val">Rs ${m.totalNet.toLocaleString("en-IN")}</div></div>
-  <div class="kpi"><div class="kpi-label">GST Collected</div><div class="kpi-val">Rs ${m.totalGST.toLocaleString("en-IN")}</div></div>
-  <div class="kpi"><div class="kpi-label">Tips</div><div class="kpi-val">Rs ${m.totalTips.toLocaleString("en-IN")}</div></div>
-</div>
-<div class="kpi-row">
-  <div class="kpi"><div class="kpi-label">Total Bills</div><div class="kpi-val">${m.totalBills}</div></div>
-  <div class="kpi"><div class="kpi-label">Working Days</div><div class="kpi-val">${m.workingDays}</div></div>
-  <div class="kpi"><div class="kpi-label">Avg Daily Revenue</div><div class="kpi-val">Rs ${Math.round(m.avgDailyRevenue).toLocaleString("en-IN")}</div></div>
-  <div class="kpi"><div class="kpi-label">Avg Bill Value</div><div class="kpi-val">Rs ${m.totalBills ? Math.round(m.totalGross/m.totalBills).toLocaleString("en-IN") : 0}</div></div>
-</div>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      color: #000;
+      line-height: 1.4;
+      font-size: 11px;
+      margin: 0;
+      padding: 15mm 20mm;
+      background: #fff;
+    }
 
-<h2>Payment Breakdown</h2>
-<table><thead><tr><th>Method</th><th class="right">Amount (Rs)</th><th class="right">Share (%)</th></tr></thead><tbody>
-${Object.entries(m.paymentMap).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<tr><td>${k}</td><td class="right">${v.toLocaleString("en-IN")}</td><td class="right">${m.totalGross?((v/m.totalGross)*100).toFixed(1):0}%</td></tr>`).join("")}
-</tbody></table>
+    .header {
+      text-align: center;
+      margin-bottom: 25px;
+    }
 
-<h2>Top Services</h2>
-<table><thead><tr><th>Service Name</th><th class="right">Qty</th><th class="right">Revenue (Rs)</th></tr></thead><tbody>
-${topServices.map(([k,v])=>`<tr><td>${k}</td><td class="right">${v.qty}</td><td class="right">${v.total.toLocaleString("en-IN")}</td></tr>`).join("") || "<tr><td colspan='3'>No services</td></tr>"}
-</tbody></table>
+    h1 {
+      font-size: 20px;
+      font-weight: 700;
+      margin: 0;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: #000;
+    }
 
-<h2>Top Products Sold</h2>
-<table><thead><tr><th>Product Name</th><th class="right">Qty</th><th class="right">Revenue (Rs)</th></tr></thead><tbody>
-${topProducts.map(([k,v])=>`<tr><td>${k}</td><td class="right">${v.qty}</td><td class="right">${v.total.toLocaleString("en-IN")}</td></tr>`).join("") || "<tr><td colspan='3'>No products</td></tr>"}
-</tbody></table>
+    .sub {
+      font-size: 11px;
+      color: #333;
+      margin: 6px 0 0 0;
+      font-weight: 500;
+    }
 
-<h2>Stylist Performance</h2>
-<table><thead><tr><th>Stylist</th><th class="right">Bills</th><th class="right">Services (Rs)</th><th class="right">Products (Rs)</th><th class="right">Tips (Rs)</th><th class="right">Total (Rs)</th></tr></thead><tbody>
-${staffRows.map(([k,v])=>`<tr><td>${k}</td><td class="right">${v.bills}</td><td class="right">${v.services.toLocaleString("en-IN")}</td><td class="right">${v.products.toLocaleString("en-IN")}</td><td class="right">${v.tips.toLocaleString("en-IN")}</td><td class="right"><strong>${v.total.toLocaleString("en-IN")}</strong></td></tr>`).join("") || "<tr><td colspan='6'>No staff data</td></tr>"}
-</tbody></table>
+    .divider {
+      height: 1px;
+      background: #000;
+      margin: 15px 0 25px 0;
+    }
 
-<div class="footer">Report generated by Essensuals Admin POS. All amounts in INR (Rs).</div>
-</body></html>`);
+    /* Responsive, grid-based cards for KPI metrics */
+    .kpi-section {
+      margin-bottom: 20px;
+      page-break-inside: avoid;
+    }
+
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .kpi {
+      border: 1px solid #000;
+      padding: 10px;
+      border-radius: 4px;
+      text-align: center;
+      background: #fafafa;
+    }
+
+    .kpi-label {
+      font-size: 9px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #444;
+      margin-bottom: 4px;
+      font-weight: 600;
+    }
+
+    .kpi-val {
+      font-size: 15px;
+      font-weight: bold;
+      color: #000;
+    }
+
+    h2 {
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      border-bottom: 1px solid #000;
+      padding-bottom: 4px;
+      margin: 25px 0 10px 0;
+      letter-spacing: 0.5px;
+      page-break-after: avoid;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 10.5px;
+      margin-bottom: 15px;
+      page-break-inside: auto;
+    }
+
+    tr {
+      page-break-inside: avoid;
+      page-break-after: auto;
+    }
+
+    th, td {
+      border: 1px solid #000;
+      padding: 6px 8px;
+      text-align: left;
+    }
+
+    th {
+      font-weight: 700;
+      background: #f5f5f5;
+    }
+
+    .right {
+      text-align: right;
+    }
+
+    .footer {
+      margin-top: 35px;
+      border-top: 1px solid #000;
+      padding-top: 10px;
+      font-size: 9px;
+      color: #555;
+      text-align: center;
+      page-break-inside: avoid;
+    }
+
+    .no-print {
+      margin-bottom: 20px;
+      text-align: center;
+      font-family: sans-serif;
+    }
+
+    .no-print button {
+      padding: 6px 14px;
+      font-weight: bold;
+      cursor: pointer;
+      border: 1px solid #000;
+      background: #fff;
+      border-radius: 4px;
+    }
+
+    .no-print button:hover {
+      background: #000;
+      color: #fff;
+    }
+  </style>
+</head>
+<body>
+  <div class="no-print">
+    <button onclick="window.print()">Print / Save PDF</button>
+    <button onclick="window.close()" style="margin-left: 10px;">Close Window</button>
+  </div>
+  
+  <div class="header">
+    <h1>TONI &amp; GUY</h1>
+    <div class="sub">MONTHLY BUSINESS REPORT</div>
+    <div class="sub" style="font-size: 10px; color: #444; margin-top: 4px;">
+      Essensuals Gorantla &nbsp;|&nbsp; Report Period: ${label} &nbsp;|&nbsp; Date Generated: ${new Date().toLocaleDateString("en-IN", { day: 'numeric', month: 'long', year: 'numeric' })}
+    </div>
+  </div>
+  
+  <div class="divider"></div>
+
+  <div class="kpi-section">
+    <div class="kpi-grid">
+      <div class="kpi">
+        <div class="kpi-label">Gross Revenue</div>
+        <div class="kpi-val">Rs ${m.totalGross.toLocaleString("en-IN")}</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Net Sales</div>
+        <div class="kpi-val">Rs ${m.totalNet.toLocaleString("en-IN")}</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">GST Collected</div>
+        <div class="kpi-val">Rs ${m.totalGST.toLocaleString("en-IN")}</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Tips</div>
+        <div class="kpi-val">Rs ${m.totalTips.toLocaleString("en-IN")}</div>
+      </div>
+    </div>
+    
+    <div class="kpi-grid">
+      <div class="kpi">
+        <div class="kpi-label">Total Bills</div>
+        <div class="kpi-val">${m.totalBills}</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Working Days</div>
+        <div class="kpi-val">${m.workingDays}</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Avg Daily Revenue</div>
+        <div class="kpi-val">Rs ${Math.round(m.avgDailyRevenue).toLocaleString("en-IN")}</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Avg Bill Value</div>
+        <div class="kpi-val">Rs ${m.totalBills ? Math.round(m.totalGross/m.totalBills).toLocaleString("en-IN") : 0}</div>
+      </div>
+    </div>
+  </div>
+
+  <h2>Payment Breakdown</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Method</th>
+        <th class="right" style="width: 150px;">Amount (Rs)</th>
+        <th class="right" style="width: 120px;">Share (%)</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${Object.entries(m.paymentMap).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`
+        <tr>
+          <td><strong>${k}</strong></td>
+          <td class="right">Rs ${v.toLocaleString("en-IN")}</td>
+          <td class="right">${m.totalGross?((v/m.totalGross)*100).toFixed(1):0}%</td>
+        </tr>
+      `).join("")}
+    </tbody>
+  </table>
+
+  <h2>Top Services</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Service Name</th>
+        <th class="right" style="width: 100px;">Qty</th>
+        <th class="right" style="width: 150px;">Revenue (Rs)</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${topServices.map(([k,v])=>`
+        <tr>
+          <td><strong>${k}</strong></td>
+          <td class="right">${v.qty}</td>
+          <td class="right">Rs ${v.total.toLocaleString("en-IN")}</td>
+        </tr>
+      `).join("") || "<tr><td colspan='3' class='right'>No services</td></tr>"}
+    </tbody>
+  </table>
+
+  ${topProducts.length > 0 ? `
+    <h2>Top Products Sold</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Product Name</th>
+          <th class="right" style="width: 100px;">Qty</th>
+          <th class="right" style="width: 150px;">Revenue (Rs)</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${topProducts.map(([k,v])=>`
+          <tr>
+            <td><strong>${k}</strong></td>
+            <td class="right">${v.qty}</td>
+            <td class="right">Rs ${v.total.toLocaleString("en-IN")}</td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+  ` : ""}
+
+  <h2>Stylist Performance</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Stylist</th>
+        <th class="right" style="width: 80px;">Bills</th>
+        <th class="right" style="width: 120px;">Services (Rs)</th>
+        <th class="right" style="width: 120px;">Products (Rs)</th>
+        <th class="right" style="width: 100px;">Tips (Rs)</th>
+        <th class="right" style="width: 140px;">Total (Rs)</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${staffRows.map(([k,v])=>`
+        <tr>
+          <td><strong>${k}</strong></td>
+          <td class="right">${v.bills}</td>
+          <td class="right">Rs ${v.services.toLocaleString("en-IN")}</td>
+          <td class="right">Rs ${v.products.toLocaleString("en-IN")}</td>
+          <td class="right">Rs ${v.tips.toLocaleString("en-IN")}</td>
+          <td class="right"><strong>Rs ${v.total.toLocaleString("en-IN")}</strong></td>
+        </tr>
+      `).join("") || "<tr><td colspan='6' class='right'>No staff data</td></tr>"}
+    </tbody>
+  </table>
+
+  <div class="footer">
+    Report generated by Essensuals Salon Admin POS. All amounts in INR (Rs).
+  </div>
+</body>
+</html>`);
     printWindow.document.close();
     setTimeout(() => printWindow.print(), 500);
   };
