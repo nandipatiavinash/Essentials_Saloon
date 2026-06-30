@@ -2,6 +2,7 @@ import { Outlet, NavLink, useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { fetchAdminData } from "../lib/api";
 import { useState, useEffect, createContext, useContext } from "react";
+import toast from "react-hot-toast";
 
 export const AdminCtx = createContext({});
 export function useAdmin() { return useContext(AdminCtx); }
@@ -35,9 +36,10 @@ const navItems = [...mainNav, ...contentNav, ...systemNav];
 export default function AdminLayout() {
   const navigate = useNavigate();
   const location = useLocation();
-  const [adminData, setAdminData] = useState({ categories: [], services: [], offers: [], gallery: [], bookings: [], settings: {} });
+  const [adminData, setAdminData] = useState({ categories: [], services: [], offers: [], gallery: [], bookings: [], settings: {}, inventory: [] });
   const [loading, setLoading] = useState(true);
   const [userEmail, setUserEmail] = useState("");
+  const [hasAlertedLowStock, setHasAlertedLowStock] = useState(false);
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     return localStorage.getItem("admin_sidebar_collapsed") === "true";
@@ -53,6 +55,21 @@ export default function AdminLayout() {
       .catch(console.error)
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (adminData.inventory && adminData.inventory.length > 0 && !hasAlertedLowStock) {
+      const lowStockItems = adminData.inventory.filter(
+        item => Number(item.stock_qty) <= Number(item.min_qty)
+      );
+      if (lowStockItems.length > 0) {
+        setHasAlertedLowStock(true);
+        toast.error(
+          `⚠️ Low Stock Alert: ${lowStockItems.length} item(s) are low on stock! (${lowStockItems.slice(0, 3).map(i => i.name).join(", ")}${lowStockItems.length > 3 ? "..." : ""})`,
+          { duration: 6000 }
+        );
+      }
+    }
+  }, [adminData.inventory, hasAlertedLowStock]);
 
   useEffect(() => {
     setMobileOpen(false);
