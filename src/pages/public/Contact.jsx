@@ -1,6 +1,7 @@
 import { useData } from "../../layouts/PublicLayout";
 import { useState } from "react";
 import { createBooking } from "../../lib/api";
+import { buildWhatsAppLink, formatBookingAlertMessage } from "../../lib/whatsapp";
 import toast from "react-hot-toast";
 
 export default function Contact() {
@@ -18,6 +19,16 @@ export default function Contact() {
     try {
       await createBooking(form);
       toast.success("Request sent! We'll confirm shortly.");
+
+      // Open WhatsApp to the SALON's number with the customer's booking details.
+      // The customer sends this message directly to the salon from their device.
+      const salonPhone = settings?.whatsapp;
+      if (salonPhone) {
+        const salonMsg = formatBookingAlertMessage(form);
+        const salonLink = buildWhatsAppLink(salonPhone, salonMsg);
+        window.open(salonLink, "_blank", "noopener,noreferrer");
+      }
+
       setForm({ name: "", phone: "", service: "", date: "", time: "", notes: "" });
     } catch (err) {
       toast.error(err.message || "Failed to submit");

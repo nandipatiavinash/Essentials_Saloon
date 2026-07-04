@@ -22,6 +22,7 @@ import StaffProfile from "./pages/admin/StaffProfile";
 
 function RequireAuth({ children }) {
   const [status, setStatus] = useState("loading"); // loading | authed | unauthed
+  const [expired, setExpired] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -30,7 +31,15 @@ function RequireAuth({ children }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => {
       setStatus(session ? "authed" : "unauthed");
     });
-    return () => subscription.unsubscribe();
+
+    // Listen for jwt-expired event dispatched by the custom fetch wrapper in supabase.js
+    const handleJwtExpired = () => setExpired(true);
+    window.addEventListener("jwt-expired", handleJwtExpired);
+
+    return () => {
+      subscription.unsubscribe();
+      window.removeEventListener("jwt-expired", handleJwtExpired);
+    };
   }, []);
 
   if (status === "loading") {
@@ -40,7 +49,7 @@ function RequireAuth({ children }) {
       </div>
     );
   }
-  if (status === "unauthed") return <Navigate to="/login" replace />;
+  if (status === "unauthed") return <Navigate to={expired ? "/login?expired=true" : "/login"} replace />;
   return children;
 }
 

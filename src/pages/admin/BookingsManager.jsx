@@ -1,12 +1,21 @@
 import { useState } from "react";
 import { useAdmin } from "../../layouts/AdminLayout";
 import { updateBookingStatus, updateBooking, format12HourTime } from "../../lib/api";
+import { buildWhatsAppLink, formatAdminBookingMessage } from "../../lib/whatsapp";
 import SearchableStaffDropdown from "../../components/SearchableStaffDropdown";
 import toast from "react-hot-toast";
-import { Calendar, CheckSquare, XCircle, Clock, Edit2 } from "lucide-react";
+import { Calendar, CheckSquare, XCircle, Clock, Edit2, MessageCircle } from "lucide-react";
 
 export default function BookingsManager() {
-  const { bookings, staff, reload } = useAdmin();
+  const { bookings, staff, settings, reload } = useAdmin();
+
+  const openWhatsApp = (booking) => {
+    if (!booking.phone) return toast.error("No phone number for this booking");
+    const msg = formatAdminBookingMessage(booking, settings);
+    const link = buildWhatsAppLink(booking.phone, msg);
+    window.open(link, "_blank", "noopener,noreferrer");
+  };
+
   const [activeTab, setActiveTab] = useState("pending"); // pending, confirmed, completed, cancelled
   const [editModal, setEditModal] = useState(null); // null or booking object
   const [saving, setSaving] = useState(false);
@@ -147,9 +156,17 @@ export default function BookingsManager() {
                   {!b.follow_up_date && !b.follow_up_notes && <span style={{ color: "#444" }}>—</span>}
                 </td>
                 <td>
-                  <div className="tbl-actions" style={{ justifyContent: "flex-end", gap: "0.5rem" }}>
+                  <div className="tbl-actions" style={{ justifyContent: "flex-end", gap: "0.5rem", flexWrap: "wrap" }}>
                     <button className="tbl-btn" onClick={() => setEditModal(b)}>
                       <Edit2 size={12} style={{ marginRight: 4 }} /> Edit
+                    </button>
+                    <button
+                      className="tbl-btn"
+                      title="Send WhatsApp to customer"
+                      onClick={() => openWhatsApp(b)}
+                      style={{ color: "#25D366", borderColor: "#25D366", display: "flex", alignItems: "center", gap: 4 }}
+                    >
+                      <MessageCircle size={12} /> WhatsApp
                     </button>
                     <select
                       className="admin-search"
@@ -238,6 +255,14 @@ export default function BookingsManager() {
             </div>
             <div className="modal-footer">
               <button type="button" className="tbl-btn" onClick={() => setEditModal(null)}>Cancel</button>
+              <button
+                type="button"
+                className="tbl-btn"
+                onClick={() => openWhatsApp(editModal)}
+                style={{ color: "#25D366", borderColor: "#25D366", display: "flex", alignItems: "center", gap: 6 }}
+              >
+                <MessageCircle size={14} /> Send WhatsApp
+              </button>
               <button type="submit" form="edit-booking-form" className="btn-add" disabled={saving}>{saving ? "Saving..." : "Save Details"}</button>
             </div>
           </div>

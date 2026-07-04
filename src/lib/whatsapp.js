@@ -27,6 +27,99 @@ export function buildWhatsAppLink(phone, message) {
   return `https://wa.me/${target}?text=${encodedMsg}`;
 }
 
+/**
+ * Message sent TO THE CUSTOMER confirming their booking was received.
+ */
+export function formatBookingConfirmationMessage(form = {}, settings = {}) {
+  const salon = settings.name || "Toni & Guy Essensuals Gorantla";
+  const firstName = (form.name || "Valued Guest").split(" ")[0];
+  const service = form.service || "your requested service";
+  const date = form.date
+    ? new Date(form.date).toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" })
+    : null;
+  const time = form.time || null;
+  const slotLine = date ? `📅 *Date:* ${date}${time ? `  ⏰ *Time:* ${time}` : ""}` : null;
+
+  const lines = [
+    `*${salon.toUpperCase()}*`,
+    ``,
+    `Hello *${firstName}* 👋,`,
+    ``,
+    `Thank you for booking with us! We've received your appointment request.`,
+    ``,
+    `*Your Booking Details:*`,
+    `💇 *Service:* ${service}`,
+    slotLine,
+    ``,
+    `Our team will confirm your appointment shortly. If you have any questions, feel free to reach out!`,
+    ``,
+    `_Toni & Guy Essensuals Gorantla | +91 91002 92525_`,
+  ].filter(l => l !== null);
+
+  return lines.join("\n");
+}
+
+/**
+ * Alert sent TO THE SALON when a new booking arrives via the public form.
+ */
+export function formatBookingAlertMessage(form = {}) {
+  const date = form.date
+    ? new Date(form.date).toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" })
+    : "Not specified";
+  const time = form.time || "Not specified";
+
+  const lines = [
+    `🔔 *New Booking Request Received!*`,
+    ``,
+    `👤 *Name:* ${form.name || "—"}`,
+    `📞 *Phone:* ${form.phone || "—"}`,
+    `💇 *Service:* ${form.service || "Not specified"}`,
+    `📅 *Preferred Date:* ${date}`,
+    `⏰ *Preferred Time:* ${time}`,
+    form.notes ? `📝 *Notes:* ${form.notes}` : null,
+    ``,
+    `Please follow up with the customer to confirm the appointment.`,
+  ].filter(l => l !== null);
+
+  return lines.join("\n");
+}
+
+/**
+ * Admin panel: WhatsApp message to send to a customer about their booking.
+ */
+export function formatAdminBookingMessage(booking = {}, settings = {}) {
+  const salon = settings.name || "Toni & Guy Essensuals Gorantla";
+  const firstName = (booking.name || "Valued Guest").split(" ")[0];
+  const service = booking.service || "your requested service";
+  const date = booking.date
+    ? new Date(booking.date).toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" })
+    : null;
+  const time = booking.time ? booking.time : null;
+  const stylist = booking.assigned_staff || null;
+
+  const lines = [
+    `*${salon.toUpperCase()}*`,
+    ``,
+    `Hello *${firstName}* 👋,`,
+    ``,
+    `We're reaching out regarding your appointment booking.`,
+    ``,
+    `*Appointment Details:*`,
+    `💇 *Service:* ${service}`,
+    date ? `📅 *Date:* ${date}` : null,
+    time ? `⏰ *Time:* ${time}` : null,
+    stylist ? `✂️ *Stylist:* ${stylist}` : null,
+    ``,
+    `We look forward to seeing you! Please let us know if you need to reschedule.`,
+    ``,
+    `_Toni & Guy Essensuals Gorantla | +91 91002 92525_`,
+  ].filter(l => l !== null);
+
+  return lines.join("\n");
+}
+
+
+
 export function formatInvoiceMessage(invoice, items = [], settings = {}) {
   const salon = "Toni & Guy Essensuals Gorantla";
   const mapsLink = "https://share.google/APJl5CWwP49v7jOCc";
