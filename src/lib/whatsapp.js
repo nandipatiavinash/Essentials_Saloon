@@ -61,54 +61,63 @@ export function formatBookingConfirmationMessage(form = {}, settings = {}) {
 
 /**
  * Alert sent TO THE SALON when a new booking arrives via the public form.
+ * Only uses emojis that WhatsApp renders correctly on all devices.
  */
 export function formatBookingAlertMessage(form = {}) {
+  const fullName = form.name || "Unknown";
   const date = form.date
     ? new Date(form.date).toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" })
     : "Not specified";
   const time = form.time || "Not specified";
 
   const lines = [
-    `🔔 *New Booking Request Received!*`,
+    `*TONI & GUY ESSENSUALS GORANTLA*`,
+    `_Essensuals by Toni&Guy Hairdressing, Gorantla, Guntur_`,
     ``,
-    `👤 *Name:* ${form.name || "—"}`,
-    `📞 *Phone:* ${form.phone || "—"}`,
-    `💇 *Service:* ${form.service || "Not specified"}`,
-    `📅 *Preferred Date:* ${date}`,
-    `⏰ *Preferred Time:* ${time}`,
-    form.notes ? `📝 *Notes:* ${form.notes}` : null,
+    `*New Booking Request* (!)`,
+    ``,
+    `*Name:* ${fullName}`,
+    `*Phone:* ${form.phone || "-"}`,
+    `*Service:* ${form.service || "Not specified"}`,
+    `*Preferred Date:* ${date}`,
+    `*Preferred Time:* ${time}`,
+    form.notes ? `*Notes:* ${form.notes}` : null,
     ``,
     `Please follow up with the customer to confirm the appointment.`,
+    ``,
+    `_Toni & Guy Essensuals Gorantla | +91 91002 92525_`,
   ].filter(l => l !== null);
 
   return lines.join("\n");
 }
 
 /**
- * Admin panel: WhatsApp message to send to a customer about their booking.
+ * Admin panel: WhatsApp message sent to a customer about their booking.
+ * Only uses emojis that WhatsApp renders correctly on all devices.
  */
 export function formatAdminBookingMessage(booking = {}, settings = {}) {
   const salon = settings.name || "Toni & Guy Essensuals Gorantla";
-  const firstName = (booking.name || "Valued Guest").split(" ")[0];
+  const fullName = booking.name || "Valued Guest";
   const service = booking.service || "your requested service";
   const date = booking.date
     ? new Date(booking.date).toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" })
     : null;
-  const time = booking.time ? booking.time : null;
+  const time = booking.time || null;
   const stylist = booking.assigned_staff || null;
 
   const lines = [
     `*${salon.toUpperCase()}*`,
+    `_Essensuals by Toni&Guy Hairdressing, Gorantla, Guntur_`,
     ``,
-    `Hello *${firstName}* 👋,`,
+    `Hello *${fullName}*,`,
     ``,
-    `We're reaching out regarding your appointment booking.`,
+    `We are reaching out regarding your appointment booking with us.`,
     ``,
     `*Appointment Details:*`,
-    `💇 *Service:* ${service}`,
-    date ? `📅 *Date:* ${date}` : null,
-    time ? `⏰ *Time:* ${time}` : null,
-    stylist ? `✂️ *Stylist:* ${stylist}` : null,
+    `- Service: ${service}`,
+    date ? `- Date: ${date}` : null,
+    time ? `- Time: ${time}` : null,
+    stylist ? `- Stylist: ${stylist}` : null,
     ``,
     `We look forward to seeing you! Please let us know if you need to reschedule.`,
     ``,
