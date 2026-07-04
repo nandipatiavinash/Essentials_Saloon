@@ -749,6 +749,7 @@ export default function AttendanceManager() {
                       <option value="Nail Technician">Nail Technician</option>
                       <option value="Salon Manager">Salon Manager</option>
                       <option value="Receptionist">Receptionist</option>
+                      <option value="Housekeeping">Housekeeping</option>
                     </select>
                   </div>
                   <div className="form-group">
