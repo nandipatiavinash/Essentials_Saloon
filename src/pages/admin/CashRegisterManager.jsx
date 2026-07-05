@@ -67,6 +67,23 @@ export default function CashRegisterManager() {
     return Number(activeRegister.opening_cash || 0) + Number(salesForDate.cash) - Number(activeRegister.expenses || 0);
   }, [activeRegister, salesForDate]);
 
+  // Parse daily expenses from separator-joined string into array
+  const expenseItems = useMemo(() => {
+    if (!activeRegister?.expense_notes) return [];
+    return activeRegister.expense_notes.split(/\s*\|\s*/).filter(Boolean);
+  }, [activeRegister?.expense_notes]);
+
+  const parseExpense = (item) => {
+    const match = item.match(/(.*?)\s*\(Rs\s*(\d+(?:\.\d+)?)\)/i);
+    if (match) {
+      return {
+        desc: match[1].trim(),
+        amount: Number(match[2]),
+      };
+    }
+    return { desc: item.trim(), amount: null };
+  };
+
   const handleOpen = async () => {
     if (!openingCashInput || isNaN(openingCashInput)) {
       toast.error("Please enter a valid opening cash amount");
@@ -312,10 +329,32 @@ Toni & Guy Essensuals Gorantla, Guntur
                 </div>
               </div>
 
-              {activeRegister.expense_notes && (
-                <div style={{ marginBottom: "2rem", padding: "0.75rem", background: "#f8f8f6", borderLeft: "2px solid #b71c1c" }}>
-                  <div style={{ fontSize: "0.58rem", textTransform: "uppercase", color: "#999", fontWeight: "bold", marginBottom: "0.25rem" }}>Daily Expense logs</div>
-                  <div style={{ fontSize: "0.7rem", color: "#555" }}>{activeRegister.expense_notes}</div>
+              {expenseItems.length > 0 && (
+                <div style={{ marginBottom: "2rem" }}>
+                  <div style={{ fontSize: "0.58rem", textTransform: "uppercase", color: "#999", fontWeight: "bold", marginBottom: "0.5rem" }}>Daily Expense logs</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                    {expenseItems.map((item, idx) => {
+                      const { desc, amount } = parseExpense(item);
+                      return (
+                        <div key={idx} style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          background: "#fff",
+                          border: "1px solid #e8e8e4",
+                          padding: "1rem",
+                          borderRadius: "4px",
+                          boxShadow: "0 1px 3px rgba(0,0,0,0.02)",
+                          borderLeft: "4px solid #b71c1c"
+                        }}>
+                          <span style={{ fontSize: "0.82rem", fontWeight: 600, color: "#333" }}>{desc}</span>
+                          <span style={{ fontSize: "1.2rem", fontWeight: "bold", color: "#b71c1c" }}>
+                            {amount !== null ? `₹${amount.toLocaleString("en-IN")}` : item}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
 
@@ -425,20 +464,31 @@ Toni & Guy Essensuals Gorantla, Guntur
             <div style={{ fontSize: "0.65rem", fontWeight: "bold", textTransform: "uppercase", letterSpacing: "0.05em", color: "#999", marginBottom: "0.75rem" }}>
               Today's Invoices
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", maxHeight: "180px", overflowY: "auto" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem", maxHeight: "250px", overflowY: "auto", paddingRight: "4px" }}>
               {salesForDate.invoiceList.map(inv => (
-                <div key={inv.id} style={{ display: "flex", justifyContent: "space-between", fontSize: "0.7rem", padding: "0.3rem 0", borderBottom: "1px solid #f0f0ec" }}>
-                  <span>
-                    <strong style={{ marginRight: 6 }}>{inv.invoice_number.slice(-5)}</strong>
-                    {inv.client_name}
-                  </span>
-                  <span>
-                    Rs {inv.total.toLocaleString("en-IN")} ({inv.payment_method})
+                <div key={inv.id} style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  background: "#fff",
+                  border: "1px solid #e8e8e4",
+                  padding: "0.75rem 1rem",
+                  borderRadius: "4px",
+                  boxShadow: "0 1px 2px rgba(0,0,0,0.01)"
+                }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "0.15rem" }}>
+                    <span style={{ fontSize: "0.8rem", fontWeight: 600, color: "#1a1a1a" }}>{inv.client_name}</span>
+                    <span style={{ fontSize: "0.65rem", color: "#666" }}>
+                      <strong style={{ color: "var(--gold)" }}>{inv.invoice_number}</strong> · {inv.payment_method}
+                    </span>
+                  </div>
+                  <span style={{ fontSize: "1rem", fontWeight: "bold", color: "#2e7d32" }}>
+                    ₹{inv.total.toLocaleString("en-IN")}
                   </span>
                 </div>
               ))}
               {!salesForDate.invoiceList.length && (
-                <div style={{ fontSize: "0.65rem", color: "#bbb", textAlign: "center", padding: "1rem" }}>
+                <div style={{ fontSize: "0.65rem", color: "#bbb", textAlign: "center", padding: "1.5rem" }}>
                   No invoices billed today.
                 </div>
               )}
