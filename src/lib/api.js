@@ -61,12 +61,12 @@ export async function fetchAdminData() {
     staffPayments, staffAdvances, expenses, expenseCategories, tipSplits, reviews,
     fixedExpenses, fixedExpensePayments
   ] = await Promise.all([
-    t("categories").select("*").order("id"),
-    t("services").select("*").order("id"),
-    t("offers").select("*").order("id"),
-    t("gallery").select("*").order("id"),
-    t("salon_settings").select("*").eq("id", 1).maybeSingle(),
-    t("bookings").select("*").order("created_at", { ascending: false }),
+    optional(t("categories").select("*").order("id"), []),
+    optional(t("services").select("*").order("id"), []),
+    optional(t("offers").select("*").order("id"), []),
+    optional(t("gallery").select("*").order("id"), []),
+    optional(t("salon_settings").select("*").eq("id", 1).maybeSingle(), {}),
+    optional(t("bookings").select("*").order("created_at", { ascending: false }), []),
     optional(t("invoices").select("*, customers(*), invoice_items(*)").order("billing_at", { ascending: false }).limit(250), []),
     optional(t("customers").select("*").order("last_visit_at", { ascending: false }).limit(500), []),
     optional(t("transactions").select("*").order("created_at", { ascending: false }).limit(250), []),
@@ -85,8 +85,7 @@ export async function fetchAdminData() {
     optional(t("fixed_expenses").select("*").order("created_at", { ascending: true }), []),
     optional(t("fixed_expense_payments").select("*").order("work_month", { ascending: false }), []),
   ]);
-  const errs = [cats, svcs, offs, gal, settRes, bkgs].map((r) => r.error).filter(Boolean);
-  if (errs.length) throw errs[0];
+
   // Clean up orphaned staff advance expenses
   const advIds = new Set((staffAdvances ?? []).map(a => a.id));
   const orphanedExpenseIds = (expenses ?? [])
@@ -98,12 +97,12 @@ export async function fetchAdminData() {
   const cleanExpenses = (expenses ?? []).filter(e => !orphanedExpenseIds.includes(e.id));
 
   return {
-    categories: cats.data ?? [],
-    services: (svcs.data ?? []).map(norm),
-    offers: offs.data ?? [],
-    gallery: gal.data ?? [],
-    settings: settRes.data ?? {},
-    bookings: (bkgs.data ?? []).map(normBooking),
+    categories: cats ?? [],
+    services: (svcs ?? []).map(norm),
+    offers: offs ?? [],
+    gallery: gal ?? [],
+    settings: settRes ?? {},
+    bookings: (bkgs ?? []).map(normBooking),
     invoices: (invoices ?? []).map(normInvoice),
     customers: (customers ?? []).map(normCustomer),
     transactions: transactions ?? [],
