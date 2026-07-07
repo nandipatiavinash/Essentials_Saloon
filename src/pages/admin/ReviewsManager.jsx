@@ -259,11 +259,26 @@ export default function ReviewsManager() {
                   </td>
                   <td>{renderStars(r.rating)}</td>
                   <td>
-                    <div style={{ fontSize: "0.82rem", whiteSpace: "pre-line" }}>{displayText}</div>
+                    {r.comment ? (
+                      <div style={{ fontSize: "0.82rem", whiteSpace: "pre-line", color: "#333", fontWeight: 500 }}>{displayText}</div>
+                    ) : (!r.service_names || r.service_names.length === 0) ? (
+                      <span style={{ color: "#bbb", fontStyle: "italic", fontSize: "0.78rem" }}>No comment left</span>
+                    ) : null}
+                    
                     {showExpandBtn && (
                       <button type="button" onClick={() => toggleExpand(r.id)} style={{ background: "none", border: "none", color: "var(--gold)", cursor: "pointer", fontSize: "0.68rem", fontWeight: "bold", padding: 0, marginTop: "2px" }}>
                         {isExpanded ? "Show Less" : "Read Full"}
                       </button>
+                    )}
+
+                    {r.service_names && r.service_names.length > 0 && (
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: "0.25rem", marginTop: r.comment ? "0.4rem" : "0" }}>
+                        {r.service_names.map((svc, sIdx) => (
+                          <span key={sIdx} style={{ fontSize: "0.62rem", background: "rgba(201,185,154,0.12)", color: "#7a673c", border: "1px solid rgba(201,185,154,0.25)", padding: "2px 6px", borderRadius: "4px", fontWeight: "bold" }}>
+                            {svc}
+                          </span>
+                        ))}
+                      </div>
                     )}
                   </td>
                   <td>
@@ -271,11 +286,6 @@ export default function ReviewsManager() {
                   </td>
                   <td>
                     <span style={{ fontSize: "0.78rem", fontWeight: 600 }}>{r.invoice_number || "—"}</span>
-                    {r.service_names && r.service_names.length > 0 && (
-                      <div style={{ fontSize: "0.58rem", color: "var(--a-muted)" }}>
-                        {r.service_names.slice(0, 2).join(", ")}{r.service_names.length > 2 ? "..." : ""}
-                      </div>
-                    )}
                   </td>
                 </tr>
               );

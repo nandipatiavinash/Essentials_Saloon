@@ -219,6 +219,13 @@ export default function AdminLayout() {
       .finally(() => setLoading(false));
   }, []);
 
+  // ── Reload data on route navigation ────────────────────────────────────────
+  useEffect(() => {
+    fetchAdminData()
+      .then(setAdminData)
+      .catch(console.error);
+  }, [location.pathname]);
+
   // ── Low stock toast (kept) ─────────────────────────────────────────────────
   useEffect(() => {
     if (adminData.inventory && adminData.inventory.length > 0 && !hasAlertedLowStock) {
