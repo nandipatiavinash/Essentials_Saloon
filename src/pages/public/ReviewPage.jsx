@@ -95,7 +95,7 @@ export default function ReviewPage() {
   }
 
 
-  const clientFirstName = (invoice?.client_name || "Guest").split(" ")[0];
+  const clientFirstName = (invoice?.client_name || "Guest").trim();
   const visitDate = invoice?.billing_at
     ? new Date(invoice.billing_at).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })
     : "";
