@@ -70,7 +70,8 @@ export default function AttendanceManager() {
 
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [saving, setSaving] = useState(false);
-  const [adjustModal, setAdjustModal] = useState(null); // null | { id, staff_name, date, check_in, check_out }
+  const [adjustModal, setAdjustModal] = useState(null); // null | { id, staff_id, staff_name, date, check_in, check_out }
+  const [notesInputState, setNotesInputState] = useState({});
 
   // Filter active staff only
   const activeStaff = useMemo(() => (staff || []).filter(s => s.active), [staff]);
@@ -90,25 +91,35 @@ export default function AttendanceManager() {
     setAttState(stateMap);
   }, [date, attendance, activeStaff]);
 
-  const handleStatusChange = (staffId, status) => {
-    setAttState(prev => {
-      const current = prev[staffId] || { status: "absent", check_in: null, check_out: null, notes: "" };
-      let check_in = current.check_in;
-      let check_out = current.check_out;
+  useEffect(() => {
+    setNotesInputState({});
+  }, [date]);
 
-      if (status === "present" || status === "late") {
-        if (!check_in) check_in = "09:00";
-        if (!check_out) check_out = "21:00";
-      } else {
-        check_in = null;
-        check_out = null;
+  const updateSingleAttendance = async (staffId, status, checkIn, checkOut, notes, logMessage) => {
+    setSaving(true);
+    try {
+      const staffName = (staff || []).find(s => s.id === staffId)?.name || "Staff";
+      await saveAttendance(date, [{
+        staff_id: staffId,
+        date,
+        status,
+        check_in: checkIn,
+        check_out: checkOut,
+        notes: notes || null
+      }]);
+      if (logMessage) {
+        await createAttendanceLog({
+          date,
+          details: logMessage
+        });
       }
-
-      return {
-        ...prev,
-        [staffId]: { ...current, status, check_in, check_out }
-      };
-    });
+      toast.success(`Attendance updated for ${staffName}!`);
+      reload();
+    } catch (err) {
+      toast.error("Failed to save changes: " + err.message);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleFieldChange = (staffId, field, value) => {
@@ -165,6 +176,7 @@ export default function AttendanceManager() {
     }
     setAdjustModal({
       id: dailyLog.id,
+      staff_id: log.staff_id,
       staff_name: sName,
       date,
       check_in: dailyLog.check_in || "09:00",
@@ -177,12 +189,12 @@ export default function AttendanceManager() {
     setSaving(true);
     try {
       await saveAttendance(date, [{
-        id: adjustModal.id,
+        staff_id: adjustModal.staff_id,
         date: adjustModal.date,
         check_in: adjustModal.check_in,
         check_out: adjustModal.check_out,
         status: "present"
-      }], true); // true for direct edit/adjustment
+      }]);
       
       await createAttendanceLog({
         date,
@@ -205,16 +217,21 @@ export default function AttendanceManager() {
 
   const logCheckIn = async (staffId) => {
     try {
-      const current = attState[staffId];
+      const current = attState[staffId] || { status: "absent", check_in: null, check_out: null, notes: "" };
       const nowTime = new Date().toLocaleTimeString("en-US", { hour12: false }).slice(0, 5);
+      const staffName = (staff || []).find(s => s.id === staffId)?.name || "Staff";
       await saveAttendance(date, [{
         staff_id: staffId,
-        staff_name: (staff || []).find(s => s.id === staffId)?.name || "Staff",
         date,
         status: "present",
         check_in: nowTime,
-        check_out: current.check_out || "21:00"
+        check_out: current.check_out || "21:00",
+        notes: current.notes || null
       }]);
+      await createAttendanceLog({
+        date,
+        details: `${staffName} checked in at ${format12HourTime(nowTime)}`
+      });
       toast.success("Checked in!");
       reload();
     } catch (err) {
@@ -224,16 +241,21 @@ export default function AttendanceManager() {
 
   const logCheckOut = async (staffId) => {
     try {
-      const current = attState[staffId];
+      const current = attState[staffId] || { status: "absent", check_in: null, check_out: null, notes: "" };
       const nowTime = new Date().toLocaleTimeString("en-US", { hour12: false }).slice(0, 5);
+      const staffName = (staff || []).find(s => s.id === staffId)?.name || "Staff";
       await saveAttendance(date, [{
         staff_id: staffId,
-        staff_name: (staff || []).find(s => s.id === staffId)?.name || "Staff",
         date,
         status: "present",
         check_in: current.check_in || "09:00",
-        check_out: nowTime
+        check_out: nowTime,
+        notes: current.notes || null
       }]);
+      await createAttendanceLog({
+        date,
+        details: `${staffName} checked out at ${format12HourTime(nowTime)}`
+      });
       toast.success("Checked out!");
       reload();
     } catch (err) {
@@ -257,13 +279,10 @@ export default function AttendanceManager() {
         <div className="table-header" style={{ paddingBottom: "1.5rem" }}>
           <div>
             <div className="table-title">Daily Attendance Logs</div>
-            <div className="pos-sub">Mark stylist check-ins and check-outs</div>
+            <div className="pos-sub">Mark stylist check-ins and check-outs (all changes save automatically)</div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
             <input type="date" className="form-input" value={date} onChange={e => setDate(e.target.value)} style={{ padding: "0.5rem 1rem", fontSize: "0.75rem" }} />
-            <button className="btn-add" onClick={handleSaveAttendance} disabled={saving || !activeStaff.length}>
-              {saving ? "Saving..." : "Save Daily Logs"}
-            </button>
           </div>
         </div>
 
@@ -289,7 +308,19 @@ export default function AttendanceManager() {
                     <select
                       className="form-input"
                       value={log.status}
-                      onChange={e => handleStatusChange(s.id, e.target.value)}
+                      onChange={async (e) => {
+                        const newStatus = e.target.value;
+                        let check_in = log.check_in;
+                        let check_out = log.check_out;
+                        if (newStatus === "present" || newStatus === "late") {
+                          if (!check_in) check_in = "09:00";
+                          if (!check_out) check_out = "21:00";
+                        } else {
+                          check_in = null;
+                          check_out = null;
+                        }
+                        await updateSingleAttendance(s.id, newStatus, check_in, check_out, log.notes);
+                      }}
                       style={{ padding: "0.35rem 0.5rem", fontSize: "0.75rem", width: "120px" }}
                       disabled={saving}
                     >
@@ -304,7 +335,17 @@ export default function AttendanceManager() {
                       <TimePickerAMPM
                         disabled={!isPresent || saving}
                         value={log.check_in || "09:00"}
-                        onChange={val => handleFieldChange(s.id, "check_in", val)}
+                        onChange={async (val) => {
+                          const staffName = (staff || []).find(st => st.id === s.id)?.name || "Staff";
+                          await updateSingleAttendance(
+                            s.id, 
+                            log.status, 
+                            val, 
+                            log.check_out, 
+                            log.notes,
+                            `Adjusted check-in time for ${staffName} to ${format12HourTime(val)}`
+                          );
+                        }}
                       />
                       {isPresent && (
                         <button type="button" className="tbl-btn" onClick={() => logCheckIn(s.id)} style={{ padding: "0.3rem 0.5rem", fontSize: "0.65rem", background: "rgba(201,185,154,0.15)", color: "#c9b99a", border: "1px solid #c9b99a", fontWeight: "bold" }}>In</button>
@@ -316,7 +357,17 @@ export default function AttendanceManager() {
                       <TimePickerAMPM
                         disabled={!isPresent || saving}
                         value={log.check_out || "21:00"}
-                        onChange={val => handleFieldChange(s.id, "check_out", val)}
+                        onChange={async (val) => {
+                          const staffName = (staff || []).find(st => st.id === s.id)?.name || "Staff";
+                          await updateSingleAttendance(
+                            s.id, 
+                            log.status, 
+                            log.check_in, 
+                            val, 
+                            log.notes,
+                            `Adjusted check-out time for ${staffName} to ${format12HourTime(val)}`
+                          );
+                        }}
                       />
                       {isPresent && (
                         <button type="button" className="tbl-btn" onClick={() => logCheckOut(s.id)} style={{ padding: "0.3rem 0.5rem", fontSize: "0.65rem", background: "rgba(0,0,0,0.05)", color: "#000", border: "1px solid #ccc", fontWeight: "bold" }}>Out</button>
@@ -328,9 +379,21 @@ export default function AttendanceManager() {
                       type="text"
                       placeholder="Notes..."
                       className="form-input"
-                      value={log.notes || ""}
-                      onChange={e => handleFieldChange(s.id, "notes", e.target.value)}
-                      style={{ padding: "0.35rem 0.6rem", fontSize: "0.72rem", minWidth: "80px" }}
+                      value={notesInputState[s.id] !== undefined ? notesInputState[s.id] : log.notes || ""}
+                      onChange={e => {
+                        const val = e.target.value;
+                        setNotesInputState(prev => ({ ...prev, [s.id]: val }));
+                      }}
+                      onBlur={async () => {
+                        const val = notesInputState[s.id] !== undefined ? notesInputState[s.id] : log.notes || "";
+                        await updateSingleAttendance(s.id, log.status, log.check_in, log.check_out, val);
+                      }}
+                      onKeyDown={async (e) => {
+                        if (e.key === "Enter") {
+                          e.target.blur();
+                        }
+                      }}
+                      style={{ padding: "0.35rem 0.6rem", fontSize: "0.72rem", minWidth: "120px" }}
                     />
                   </td>
                   <td style={{ textAlign: "center" }}>
@@ -338,15 +401,22 @@ export default function AttendanceManager() {
                       type="button"
                       className="tbl-btn danger"
                       style={{ padding: "0.3rem 0.6rem", fontSize: "0.65rem" }}
-                      title="Clear this operator's attendance for today"
-                      onClick={() => {
-                        handleFieldChange(s.id, "check_in", null);
-                        handleFieldChange(s.id, "check_out", null);
-                        handleStatusChange(s.id, "absent");
+                      title="Reset attendance for today"
+                      onClick={async () => {
+                        const staffName = (staff || []).find(st => st.id === s.id)?.name || "Staff";
+                        await updateSingleAttendance(
+                          s.id, 
+                          "absent", 
+                          null, 
+                          null, 
+                          "",
+                          `Reset/cleared daily logs for ${staffName}`
+                        );
+                        setNotesInputState(prev => ({ ...prev, [s.id]: "" }));
                       }}
                       disabled={saving}
                     >
-                      Delete
+                      Reset
                     </button>
                   </td>
                 </tr>
