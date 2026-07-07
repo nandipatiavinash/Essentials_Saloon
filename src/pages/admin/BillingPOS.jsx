@@ -3,10 +3,11 @@ import { Eye, Plus, Printer, Search, Send, Trash2 } from "lucide-react";
 import toast from "react-hot-toast";
 import { useAdmin } from "../../layouts/AdminLayout";
 import { useSearchParams } from "react-router-dom";
-import { calculateInvoiceTotals, deleteInvoice, fetchInvoiceDetails, findCustomerByPhone, saveInvoice, searchInvoices } from "../../lib/api";
+import { calculateInvoiceTotals, deleteInvoice, fetchInvoiceDetails, findCustomerByPhone, saveInvoice, searchInvoices, saveTipSplits, generateAndSaveReviewToken } from "../../lib/api";
 import { buildWhatsAppLink, formatInvoiceMessage } from "../../lib/whatsapp";
 import SearchableStaffDropdown from "../../components/SearchableStaffDropdown";
 import SearchableServiceDropdown from "../../components/SearchableServiceDropdown";
+
 
 const emptyBill = () => ({
   client_name: "",
@@ -20,6 +21,7 @@ const emptyBill = () => ({
   items: [],
   discount: 0,
   tip: 0,
+  tip_splits: [],   // [{ staff_name, staff_id, tip_amount }]
   tax_enabled: true,
   tax_rate: 5,
   payment_method: "Cash",
@@ -30,6 +32,7 @@ const emptyBill = () => ({
   staff_name: "",
   billing_at: new Date().toISOString().slice(0, 10),
 });
+
 
 export default function BillingPOS() {
   const { services, settings, staff, attendance, inventory, reload } = useAdmin();
@@ -267,6 +270,18 @@ export default function BillingPOS() {
     if (!bill.staff_name) { toast.error("Please select a main staff member"); return; }
     const missingItemStaff = bill.items.some(item => !item.staff_name);
     if (missingItemStaff) { toast.error("Please select a staff member for all items"); return; }
+
+    // Validate tip splits if multi-staff and tip > 0
+    const uniqueStaffNames = [...new Set((bill.items || []).map(i => i.staff_name).filter(Boolean))];
+    const totalTip = Number(bill.tip || 0);
+    if (uniqueStaffNames.length >= 2 && totalTip > 0) {
+      const splitTotal = (bill.tip_splits || []).reduce((s, ts) => s + Number(ts.tip_amount || 0), 0);
+      if (Math.abs(splitTotal - totalTip) > 0.01) {
+        toast.error(`Tip splits must add up to Rs ${totalTip}. Currently: Rs ${splitTotal}`);
+        return;
+      }
+    }
+
     setSaving(true);
     try {
       let transactionId = bill.transaction_id || null;
@@ -280,9 +295,23 @@ export default function BillingPOS() {
           ? new Date(bill.billing_at + "T12:00:00+05:30").toISOString()
           : new Date().toISOString()
       });
-      setInvoice(saved);
+
+      // Save tip splits for multi-staff bills
+      const splitsToSave = uniqueStaffNames.length >= 2 && totalTip > 0
+        ? (bill.tip_splits || []).filter(ts => Number(ts.tip_amount) > 0)
+        : uniqueStaffNames.length === 1 && totalTip > 0
+          ? [{ staff_name: uniqueStaffNames[0], staff_id: null, tip_amount: totalTip }]
+          : [];
+      if (splitsToSave.length > 0) {
+        try { await saveTipSplits(saved.id, splitsToSave); } catch (_) { /* non-critical */ }
+      }
+
+      // Generate review token (non-critical, don't block save)
+      let reviewToken = null;
+      try { reviewToken = await generateAndSaveReviewToken(saved.id); } catch (_) { /* ignore */ }
+
+      setInvoice({ ...saved, review_token: reviewToken });
       setInvoiceItems(bill.items.map((item) => ({ ...item, total: Number(item.quantity || 1) * Number(item.price || 0) })));
-      // Update bill id/invoice_number but keep data visible
       setBill(prev => ({ ...prev, id: saved.id, invoice_number: saved.invoice_number }));
       setBillSaved(true);
       setAttemptedSubmit(false);
@@ -292,6 +321,7 @@ export default function BillingPOS() {
       toast.error(err.message);
     } finally { setSaving(false); }
   };
+
 
   const startNewBill = () => {
     setBill(emptyBill());
@@ -569,8 +599,12 @@ export default function BillingPOS() {
       toast.error("Please save the bill first before sharing on WhatsApp.");
       return;
     }
+    const appBase = window.location.origin;
+    const reviewUrl = invoice.review_token
+      ? `${appBase}/review?token=${invoice.review_token}`
+      : null;
     const invData = { ...invoice, is_member: bill.is_member, membership_tier: bill.membership_tier };
-    const url = buildWhatsAppLink(invoice.mobile, formatInvoiceMessage(invData, invoiceItems, settings));
+    const url = buildWhatsAppLink(invoice.mobile, formatInvoiceMessage(invData, invoiceItems, settings, reviewUrl));
     const win = window.open(url, "_blank", "noopener,noreferrer");
     if (!win) {
       navigator.clipboard?.writeText(url).then(() => {
@@ -578,6 +612,7 @@ export default function BillingPOS() {
       }).catch(() => toast.error("Please allow popups for WhatsApp to open."));
     }
   };
+
 
   return (
     <div className="pos-grid">
@@ -806,7 +841,21 @@ export default function BillingPOS() {
               </div>
               <div className="form-group">
                 <label className="form-label">Tip Amount</label>
-                <input type="number" min="0" className="form-input" value={bill.tip} onChange={(e) => setBill({ ...bill, tip: e.target.value })} />
+                <input type="number" min="0" className="form-input" value={bill.tip} onChange={(e) => {
+                  const newTip = Number(e.target.value) || 0;
+                  setBill(prev => {
+                    // Re-distribute tip evenly across staff if splits exist
+                    const uniqueStaff = [...new Set((prev.items || []).map(i => i.staff_name).filter(Boolean))];
+                    const newSplits = uniqueStaff.length >= 2
+                      ? uniqueStaff.map((name, idx) => ({
+                          staff_name: name,
+                          staff_id: null,
+                          tip_amount: idx === 0 ? newTip - Math.floor(newTip / uniqueStaff.length) * (uniqueStaff.length - 1) : Math.floor(newTip / uniqueStaff.length),
+                        }))
+                      : prev.tip_splits;
+                    return { ...prev, tip: e.target.value, tip_splits: newSplits };
+                  });
+                }} />
               </div>
               <div className="form-group">
                 <label className="form-label">GST / Tax</label>
@@ -816,6 +865,72 @@ export default function BillingPOS() {
                 </div>
               </div>
             </div>
+            {/* Tip Split Panel — appears when 2+ staff on bill and tip > 0 */}
+            {(() => {
+              const uniqueStaff = [...new Set((bill.items || []).map(i => i.staff_name).filter(Boolean))];
+              const totalTip = Number(bill.tip || 0);
+              if (uniqueStaff.length < 2 || totalTip <= 0) return null;
+              const splits = bill.tip_splits || [];
+              const distributed = splits.reduce((s, ts) => s + Number(ts.tip_amount || 0), 0);
+              const isBalanced = Math.abs(distributed - totalTip) < 0.01;
+              return (
+                <div style={{ margin: "0.75rem 0", padding: "1rem", background: "rgba(201,185,154,0.06)", border: `1px solid ${isBalanced ? "rgba(46,125,50,0.3)" : "rgba(201,185,154,0.3)"}` }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.75rem" }}>
+                    <div style={{ fontSize: "0.65rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--gold)" }}>
+                      💡 Tip Distribution
+                    </div>
+                    <button type="button" className="tbl-btn" style={{ fontSize: "0.65rem" }} onClick={() => {
+                      const perStaff = Math.floor(totalTip / uniqueStaff.length);
+                      const newSplits = uniqueStaff.map((name, idx) => ({
+                        staff_name: name,
+                        staff_id: null,
+                        tip_amount: idx === 0 ? totalTip - perStaff * (uniqueStaff.length - 1) : perStaff,
+                      }));
+                      setBill(prev => ({ ...prev, tip_splits: newSplits }));
+                    }}>
+                      Auto-Split Equally
+                    </button>
+                  </div>
+                  {uniqueStaff.map((staffName) => {
+                    const split = splits.find(s => s.staff_name === staffName);
+                    const splitAmt = split ? split.tip_amount : 0;
+                    const serviceCount = (bill.items || []).filter(i => i.staff_name === staffName).length;
+                    return (
+                      <div key={staffName} style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "0.5rem" }}>
+                        <span style={{ flex: 1, fontSize: "0.78rem", fontWeight: 600 }}>{staffName}</span>
+                        <span style={{ fontSize: "0.62rem", color: "var(--a-muted)" }}>{serviceCount} service{serviceCount !== 1 ? "s" : ""}</span>
+                        <input
+                          type="number"
+                          min="0"
+                          max={totalTip}
+                          className="form-input"
+                          style={{ width: "100px" }}
+                          value={splitAmt}
+                          onChange={(e) => {
+                            const val = Number(e.target.value) || 0;
+                            setBill(prev => {
+                              const prevSplits = prev.tip_splits || [];
+                              const idx = prevSplits.findIndex(s => s.staff_name === staffName);
+                              const newSplits = idx >= 0
+                                ? prevSplits.map((s, i) => i === idx ? { ...s, tip_amount: val } : s)
+                                : [...prevSplits, { staff_name: staffName, staff_id: null, tip_amount: val }];
+                              return { ...prev, tip_splits: newSplits };
+                            });
+                          }}
+                        />
+                      </div>
+                    );
+                  })}
+                  <div style={{ fontSize: "0.72rem", marginTop: "0.5rem", paddingTop: "0.5rem", borderTop: "1px solid var(--a-border)", display: "flex", justifyContent: "space-between" }}>
+                    <span style={{ color: "var(--a-muted)" }}>Distributed:</span>
+                    <span style={{ fontWeight: 700, color: isBalanced ? "#2e7d32" : "#b71c1c" }}>
+                      Rs {distributed} / Rs {totalTip} {isBalanced ? "✓" : "⚠ Must match"}
+                    </span>
+                  </div>
+                </div>
+              );
+            })()}
+
             <div className="form-row">
               <div className="form-group">
                 <label className="form-label">Payment Method</label>

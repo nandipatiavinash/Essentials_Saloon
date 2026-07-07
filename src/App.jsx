@@ -6,6 +6,7 @@ import Gallery from "./pages/public/Gallery";
 import Offers from "./pages/public/Offers";
 import Contact from "./pages/public/Contact";
 import QRMenu from "./pages/public/QRMenu";
+import ReviewPage from "./pages/public/ReviewPage";
 
 export default function App() {
   return (
@@ -23,8 +24,12 @@ export default function App() {
       <Route path="/menu" element={<QRMenu />} />
       <Route path="/menu/:branch" element={<QRMenu />} />
 
+      {/* Public Review submission */}
+      <Route path="/review" element={<ReviewPage />} />
+
       {/* Catch-all */}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }
+

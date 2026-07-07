@@ -1,16 +1,35 @@
 import { useAdmin } from "../../layouts/AdminLayout";
 import { Link, useNavigate } from "react-router-dom";
 import { buildAnalytics, cleanDemographicData } from "../../lib/api";
-import { AlertTriangle, Package } from "lucide-react";
+import { AlertTriangle, Package, Star, MessageSquare } from "lucide-react";
 import toast from "react-hot-toast";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 
 export default function Dashboard() {
-  const { services, bookings, offers, invoices, customers, inventory, reload } = useAdmin();
+  const { services, bookings, offers, invoices, customers, inventory, reviews, staffPayments, reload } = useAdmin();
   const navigate = useNavigate();
   const [resetting, setResetting] = useState(false);
   const [revenueModal, setRevenueModal] = useState(null); // null | 'today' | 'monthly'
   const [expandInvoices, setExpandInvoices] = useState(false);
+
+  // Compute customer satisfaction stats
+  const safeReviews = reviews || [];
+  const ratingStats = useMemo(() => {
+    const total = safeReviews.length;
+    if (total === 0) return { avg: "0.0", total: 0, fiveStarPct: 0 };
+    const sum = safeReviews.reduce((acc, r) => acc + Number(r.rating || 0), 0);
+    const avg = (sum / total).toFixed(1);
+    const fiveStar = safeReviews.filter(r => Number(r.rating) === 5).length;
+    const fiveStarPct = ((fiveStar / total) * 100).toFixed(0);
+    return { avg, total, fiveStarPct };
+  }, [safeReviews]);
+
+  // Compute overdue salaries
+  const overdueSalaries = useMemo(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    return (staffPayments || []).filter(p => p.status === "unpaid" && p.scheduled_payment_date && p.scheduled_payment_date < today);
+  }, [staffPayments]);
+
 
   const getRevenueBreakdown = (range) => {
     const todayStr = new Date().toISOString().slice(0, 10);
@@ -92,7 +111,16 @@ export default function Dashboard() {
 
   return (
     <>
-      <div className="stats-grid">
+      {overdueSalaries.length > 0 && (
+        <div style={{ background: "rgba(183,28,28,0.08)", border: "1px solid rgba(183,28,28,0.2)", padding: "1rem 1.5rem", borderRadius: "4px", marginBottom: "1.5rem", display: "flex", alignItems: "center", gap: "0.75rem", cursor: "pointer" }} onClick={() => navigate("/staff-management")}>
+          <AlertTriangle size={18} style={{ color: "#b71c1c" }} />
+          <div style={{ fontSize: "0.82rem", color: "#b71c1c", fontWeight: "bold" }}>
+            ⚠️ OVERDUE SALARY PAYMENTS: {overdueSalaries.length} employee salary payouts are overdue! Click here to review and mark them as paid.
+          </div>
+        </div>
+      )}
+
+      <div className="stats-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}>
         <div className="stat-card" onClick={() => { setRevenueModal("today"); setExpandInvoices(false); }} style={{ cursor: "pointer" }}>
           <div className="stat-label">Today Revenue</div>
           <div className="stat-value">Rs {analytics.todayRevenue.toLocaleString("en-IN")}</div>
@@ -108,12 +136,20 @@ export default function Dashboard() {
           <div className="stat-value">{customers?.length || 0}</div>
           <div className="stat-sub">Customer database</div>
         </div>
-        <div className="stat-card">
+        <div className="stat-card" onClick={() => navigate("/reviews")} style={{ cursor: "pointer" }}>
+          <div className="stat-label">Customer Rating</div>
+          <div className="stat-value" style={{ display: "flex", alignItems: "center", gap: "2px" }}>
+            ★ {ratingStats.avg}
+          </div>
+          <div className="stat-sub">From {ratingStats.total} reviews ({ratingStats.fiveStarPct}% 5★)</div>
+        </div>
+        <div className="stat-card" onClick={() => navigate("/bookings")} style={{ cursor: "pointer" }}>
           <div className="stat-label">Pending Bookings</div>
           <div className="stat-value">{pendingBookings.length}</div>
           <div className="stat-sub">Requires attention</div>
         </div>
       </div>
+
 
       {/* Inventory Summary */}
       <div className="table-wrap" style={{ marginTop: "0" }}>
@@ -227,6 +263,79 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
+      {/* Customer Satisfaction & Reviews Widget */}
+      <div className="table-wrap" style={{ marginTop: "1.5rem" }}>
+        <div className="table-header">
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+            <div className="table-title"><Star size={14} style={{ marginRight: 6, fill: "var(--gold)", color: "var(--gold)" }} />Customer Satisfaction Overview</div>
+          </div>
+          <Link to="/reviews" className="tbl-btn" style={{ textDecoration: "none" }}>View All Reviews</Link>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: "1.5rem", padding: "1.5rem", borderTop: "1px solid var(--a-border)" }}>
+          {/* Left column: Star distributions */}
+          <div>
+            <div style={{ fontSize: "2rem", fontWeight: "bold", display: "flex", alignItems: "center", gap: "4px", color: "var(--gold)" }}>
+              ★ {ratingStats.avg} <span style={{ fontSize: "0.85rem", color: "var(--a-muted)" }}>/ 5.0</span>
+            </div>
+            <div style={{ fontSize: "0.72rem", color: "var(--a-muted)", marginBottom: "1rem" }}>
+              Based on {ratingStats.total} total reviews
+            </div>
+            
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}>
+              {[5, 4, 3, 2, 1].map(stars => {
+                const count = safeReviews.filter(r => Number(r.rating) === stars).length;
+                const pct = ratingStats.total > 0 ? ((count / ratingStats.total) * 100).toFixed(0) : 0;
+                return (
+                  <div key={stars} style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.72rem" }}>
+                    <span style={{ width: "35px", fontWeight: "bold" }}>{stars} ★</span>
+                    <div style={{ flex: 1, height: "6px", background: "rgba(0,0,0,0.03)", borderRadius: "3px", overflow: "hidden" }}>
+                      <div style={{ height: "100%", width: `${pct}%`, background: "var(--gold)" }}></div>
+                    </div>
+                    <span style={{ width: "30px", textAlign: "right", color: "var(--a-muted)" }}>{pct}%</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Right column: Latest 4 reviews list */}
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", borderLeft: "1px solid var(--a-border)", paddingLeft: "1.5rem" }}>
+            <div style={{ fontSize: "0.72rem", fontWeight: "bold", textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--a-muted)" }}>
+              Latest Client Reviews
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
+              {safeReviews.slice(0, 4).map(r => (
+                <div key={r.id} style={{ display: "flex", gap: "1rem", fontSize: "0.78rem", borderBottom: "1px dashed rgba(0,0,0,0.04)", paddingBottom: "0.5rem" }}>
+                  <div style={{ minWidth: "90px" }}>
+                    <div style={{ fontWeight: 600 }}>{r.client_name}</div>
+                    <div style={{ fontSize: "0.62rem", color: "var(--a-muted)" }}>
+                      Stylist: {r.staff_name || "Unassigned"}
+                    </div>
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ color: "var(--gold)", marginBottom: "0.15rem" }}>
+                      {"★".repeat(Math.round(r.rating || 0))}
+                    </div>
+                    <div style={{ fontSize: "0.72rem", color: "#555", fontStyle: "italic" }}>
+                      "{r.comment || "No comment left"}"
+                    </div>
+                  </div>
+                  <div style={{ fontSize: "0.65rem", color: "var(--a-muted)" }}>
+                    {r.reviewed_at ? new Date(r.reviewed_at).toLocaleDateString("en-IN") : ""}
+                  </div>
+                </div>
+              ))}
+              {!safeReviews.length && (
+                <div style={{ fontSize: "0.75rem", color: "var(--a-muted)", textAlign: "center", padding: "1.5rem" }}>
+                  No customer reviews received yet.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
 
       {revenueModal && modalData && (
         <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && setRevenueModal(null)} style={{ zIndex: 1100 }}>

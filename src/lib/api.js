@@ -49,7 +49,12 @@ export async function fetchPublicData() {
 
 // ─── Fetch all admin data ─────────────────────────────────────────────────────
 export async function fetchAdminData() {
-  const [cats, svcs, offs, gal, settRes, bkgs, invoices, customers, transactions, reportLogs, staff, attendance, inventory, cashRegister, attendanceLogs] = await Promise.all([
+  const [
+    cats, svcs, offs, gal, settRes, bkgs,
+    invoices, customers, transactions, reportLogs,
+    staff, attendance, inventory, cashRegister, attendanceLogs,
+    staffPayments, staffAdvances, expenses, expenseCategories, tipSplits, reviews
+  ] = await Promise.all([
     t("categories").select("*").order("id"),
     t("services").select("*").order("id"),
     t("offers").select("*").order("id"),
@@ -65,6 +70,12 @@ export async function fetchAdminData() {
     optional(t("inventory").select("*").order("name"), []),
     optional(t("cash_register").select("*").order("date", { ascending: false }).limit(60), []),
     optional(t("attendance_logs").select("*").order("created_at", { ascending: false }).limit(200), []),
+    optional(t("staff_payments").select("*").order("work_month", { ascending: false }), []),
+    optional(t("staff_advances").select("*").order("date", { ascending: false }), []),
+    optional(t("expenses").select("*").order("date", { ascending: false }).limit(300), []),
+    optional(t("expense_categories").select("*").order("sort_order"), []),
+    optional(t("invoice_tip_splits").select("*").order("created_at", { ascending: false }).limit(500), []),
+    optional(t("reviews").select("*").order("created_at", { ascending: false }).limit(200), []),
   ]);
   const errs = [cats, svcs, offs, gal, settRes, bkgs].map((r) => r.error).filter(Boolean);
   if (errs.length) throw errs[0];
@@ -84,6 +95,12 @@ export async function fetchAdminData() {
     inventory: inventory ?? [],
     cashRegister: cashRegister ?? [],
     attendanceActivityLogs: attendanceLogs ?? [],
+    staffPayments: staffPayments ?? [],
+    staffAdvances: staffAdvances ?? [],
+    expenses: expenses ?? [],
+    expenseCategories: expenseCategories ?? [],
+    tipSplits: tipSplits ?? [],
+    reviews: reviews ?? [],
   };
 }
 
@@ -1009,5 +1026,234 @@ export async function cleanDemographicData() {
   if (errCust) throw errCust;
 
   return true;
+}
+
+
+// ─── Tip Splits ───────────────────────────────────────────────────────────────
+export async function saveTipSplits(invoiceId, splits = []) {
+  await t("invoice_tip_splits").delete().eq("invoice_id", invoiceId);
+  if (!splits.length) return [];
+  const rows = splits.map(s => ({
+    invoice_id: invoiceId,
+    staff_id: s.staff_id || null,
+    staff_name: s.staff_name,
+    tip_amount: Number(s.tip_amount || 0),
+  }));
+  const { data, error } = await t("invoice_tip_splits").insert(rows).select();
+  if (error) throw error;
+  return data;
+}
+
+// ─── Review Token ─────────────────────────────────────────────────────────────
+export async function generateAndSaveReviewToken(invoiceId) {
+  const token = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  const { error } = await t("invoices").update({ review_token: token, review_sent: true }).eq("id", invoiceId);
+  if (error) throw error;
+  return token;
+}
+
+export async function fetchInvoiceByReviewToken(token) {
+  const { data, error } = await t("invoices")
+    .select("id, invoice_number, client_name, mobile, staff_name, review_token, review_sent, billing_at, invoice_items(service_name, item_type)")
+    .eq("review_token", token)
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+export async function submitReview(payload) {
+  const { data, error } = await t("reviews").insert({
+    invoice_id: payload.invoice_id || null,
+    invoice_number: payload.invoice_number || null,
+    customer_id: payload.customer_id || null,
+    client_name: payload.client_name || null,
+    mobile: payload.mobile || null,
+    rating: Number(payload.rating),
+    comment: payload.comment || null,
+    staff_name: payload.staff_name || null,
+    service_names: payload.service_names || null,
+    review_token: payload.review_token || null,
+    reviewed_at: new Date().toISOString(),
+  }).select().single();
+  if (error) throw error;
+  return data;
+}
+
+// ─── Staff Payments (Payroll) ─────────────────────────────────────────────────
+export async function saveStaffPayment(payload) {
+  const row = {
+    staff_id: payload.staff_id,
+    work_month: payload.work_month,
+    payment_month: payload.payment_month || null,
+    base_salary: Number(payload.base_salary || 0),
+    tips_earned: Number(payload.tips_earned || 0),
+    incentives: Number(payload.incentives || 0),
+    advances_deducted: Number(payload.advances_deducted || 0),
+    other_deductions: Number(payload.other_deductions || 0),
+    net_payable: Number(payload.net_payable || 0),
+    scheduled_payment_date: payload.scheduled_payment_date || null,
+    status: payload.status || "unpaid",
+    payment_method: payload.payment_method || "Cash",
+    notes: payload.notes || null,
+    updated_at: new Date().toISOString(),
+  };
+  const { data, error } = await t("staff_payments")
+    .upsert(row, { onConflict: "staff_id,work_month" })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function markSalaryPaid(paymentId, staffId, workMonth, paymentDate, netPayable, staffName, paymentMethod = "Cash") {
+  const { error: payErr } = await t("staff_payments")
+    .update({ status: "paid", payment_date: paymentDate, payment_method: paymentMethod, updated_at: new Date().toISOString() })
+    .eq("id", paymentId);
+  if (payErr) throw payErr;
+
+  const { error: advErr } = await t("staff_advances")
+    .update({ status: "deducted", salary_payment_id: paymentId })
+    .eq("staff_id", staffId)
+    .eq("work_month", workMonth)
+    .eq("status", "pending");
+  if (advErr) throw advErr;
+
+  const { error: expErr } = await t("expenses").insert({
+    category: "Salaries",
+    description: `Salary paid to ${staffName} for ${workMonth}`,
+    amount: Number(netPayable),
+    date: paymentDate,
+    payment_method: paymentMethod,
+    month: paymentDate.slice(0, 7),
+    is_system_entry: true,
+    source_id: paymentId,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  });
+  if (expErr) throw expErr;
+}
+
+// ─── Staff Advances ───────────────────────────────────────────────────────────
+export async function saveStaffAdvance(payload) {
+  const { data, error } = await t("staff_advances").insert({
+    staff_id: payload.staff_id,
+    amount: Number(payload.amount),
+    date: payload.date || new Date().toISOString().slice(0, 10),
+    work_month: payload.work_month,
+    status: "pending",
+    notes: payload.notes || null,
+  }).select().single();
+  if (error) throw error;
+
+  const staffName = payload.staff_name || "Staff";
+  await t("expenses").insert({
+    category: "Staff Advance",
+    description: `Advance issued to ${staffName}`,
+    amount: Number(payload.amount),
+    date: payload.date || new Date().toISOString().slice(0, 10),
+    payment_method: "Cash",
+    month: (payload.date || new Date().toISOString().slice(0, 10)).slice(0, 7),
+    is_system_entry: true,
+    source_id: data.id,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  });
+
+  return data;
+}
+
+export async function deleteStaffAdvance(id) {
+  const { error } = await t("staff_advances").delete().eq("id", id).eq("status", "pending");
+  if (error) throw error;
+}
+
+// ─── Expenses ─────────────────────────────────────────────────────────────────
+export async function saveExpense(payload) {
+  const row = {
+    category: payload.category,
+    description: payload.description || null,
+    amount: Number(payload.amount),
+    date: payload.date,
+    payment_method: payload.payment_method || "Cash",
+    reference: payload.reference || null,
+    month: payload.date ? payload.date.slice(0, 7) : new Date().toISOString().slice(0, 7),
+    notes: payload.notes || null,
+    is_system_entry: false,
+    updated_at: new Date().toISOString(),
+  };
+  if (payload.id) {
+    const { data, error } = await t("expenses").update(row).eq("id", payload.id).select().single();
+    if (error) throw error;
+    return data;
+  } else {
+    row.created_at = new Date().toISOString();
+    const { data, error } = await t("expenses").insert(row).select().single();
+    if (error) throw error;
+    return data;
+  }
+}
+
+export async function deleteExpense(id) {
+  const { error } = await t("expenses").delete().eq("id", id).eq("is_system_entry", false);
+  if (error) throw error;
+}
+
+export async function saveExpenseCategory(payload) {
+  const { data, error } = await t("expense_categories").insert({
+    name: payload.name.trim(),
+    icon: payload.icon || "💳",
+    is_system: false,
+    is_fixed: !!payload.is_fixed,
+    sort_order: 50,
+  }).select().single();
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteExpenseCategory(id) {
+  const { error } = await t("expense_categories").delete().eq("id", id).eq("is_system", false);
+  if (error) throw error;
+}
+
+// ─── Stock Transfers ──────────────────────────────────────────────────────────
+export async function saveStockTransfer(payload) {
+  const { data, error } = await t("stock_transfers").insert({
+    inventory_id: payload.inventory_id,
+    product_name: payload.product_name,
+    quantity: Number(payload.quantity),
+    transfer_type: payload.transfer_type,
+    destination: payload.destination || null,
+    origin: payload.origin || null,
+    reason: payload.reason || null,
+    reference: payload.reference || null,
+    transferred_by: payload.transferred_by || null,
+    date: payload.date || new Date().toISOString().slice(0, 10),
+    notes: payload.notes || null,
+  }).select().single();
+  if (error) throw error;
+
+  const { data: invRow } = await t("inventory").select("stock_qty").eq("id", payload.inventory_id).single();
+  if (invRow) {
+    let newQty = Number(invRow.stock_qty);
+    const qty = Number(payload.quantity);
+    if (payload.transfer_type === "transfer_out" || payload.transfer_type === "write_off") {
+      newQty = Math.max(0, newQty - qty);
+    } else if (payload.transfer_type === "transfer_in") {
+      newQty = newQty + qty;
+    } else if (payload.transfer_type === "adjustment") {
+      newQty = Math.max(0, newQty + qty);
+    }
+    await t("inventory").update({ stock_qty: newQty, updated_at: getISTDate().toISOString() }).eq("id", payload.inventory_id);
+  }
+
+  return data;
+}
+
+export async function fetchStockTransfers(inventoryId = null) {
+  let query = t("stock_transfers").select("*").order("date", { ascending: false });
+  if (inventoryId) query = query.eq("inventory_id", inventoryId);
+  const { data, error } = await query;
+  if (error) throw error;
+  return data ?? [];
 }
 

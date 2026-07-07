@@ -30,12 +30,14 @@ function playNotifSound() {
 }
 
 const mainNav = [
-  { id: "dashboard",  path: "/dashboard",  icon: "📊", label: "Dashboard" },
-  { id: "billing",    path: "/billing",    icon: "🧾", label: "Billing POS" },
-  { id: "clients",    path: "/clients",    icon: "👤", label: "Clients" },
-  { id: "membership", path: "/membership", icon: "⭐", label: "Membership" },
-  { id: "attendance", path: "/attendance", icon: "👥", label: "HR / Attendance" },
-  { id: "register",   path: "/register",   icon: "💵", label: "Cash Register" },
+  { id: "dashboard",        path: "/dashboard",        icon: "📊", label: "Dashboard" },
+  { id: "billing",          path: "/billing",          icon: "🧾", label: "Billing POS" },
+  { id: "clients",          path: "/clients",          icon: "👤", label: "Clients" },
+  { id: "membership",       path: "/membership",       icon: "⭐", label: "Membership" },
+  { id: "attendance",       path: "/attendance",       icon: "📅", label: "Attendance" },
+  { id: "staff-management", path: "/staff-management", icon: "👥", label: "Staff & Payroll" },
+  { id: "finance",          path: "/finance",          icon: "💸", label: "Finance" },
+  { id: "reviews",          path: "/reviews",          icon: "🌟", label: "Reviews" },
 ];
 const contentNav = [
   { id: "services",   path: "/services",   icon: "✂️",  label: "Services" },
@@ -186,7 +188,12 @@ export default function AdminLayout() {
   const navigate  = useNavigate();
   const location  = useLocation();
 
-  const [adminData, setAdminData]             = useState({ categories: [], services: [], offers: [], gallery: [], bookings: [], settings: {}, inventory: [] });
+  const [adminData, setAdminData] = useState({
+    categories: [], services: [], offers: [], gallery: [], settings: {},
+    bookings: [], invoices: [], customers: [], transactions: [], reportLogs: [],
+    staff: [], attendance: [], inventory: [], cashRegister: [], attendanceActivityLogs: [],
+    staffPayments: [], staffAdvances: [], expenses: [], expenseCategories: [], tipSplits: [], reviews: [],
+  });
   const [loading, setLoading]                 = useState(true);
   const [userEmail, setUserEmail]             = useState("");
   const [hasAlertedLowStock, setHasAlertedLowStock] = useState(false);

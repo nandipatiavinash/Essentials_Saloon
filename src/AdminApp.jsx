@@ -19,6 +19,9 @@ import AttendanceManager from "./pages/admin/AttendanceManager";
 import InventoryManager from "./pages/admin/InventoryManager";
 import CashRegisterManager from "./pages/admin/CashRegisterManager";
 import StaffProfile from "./pages/admin/StaffProfile";
+import StaffManager from "./pages/admin/StaffManager";
+import FinanceManager from "./pages/admin/FinanceManager";
+import ReviewsManager from "./pages/admin/ReviewsManager";
 
 function RequireAuth({ children }) {
   const [status, setStatus] = useState("loading"); // loading | authed | unauthed
@@ -70,11 +73,16 @@ export default function AdminApp() {
         <Route path="membership" element={<MembershipManager />} />
         <Route path="attendance" element={<AttendanceManager />} />
         <Route path="inventory" element={<InventoryManager />} />
-        <Route path="register" element={<CashRegisterManager />} />
+        {/* Legacy cash register redirect → Finance hub */}
+        <Route path="register" element={<Navigate to="/finance" replace />} />
         <Route path="analytics" element={<AnalyticsDashboard />} />
         <Route path="reports" element={<ReportsManager />} />
         <Route path="settings" element={<Settings />} />
         <Route path="staff/:id" element={<StaffProfile />} />
+        {/* New pages */}
+        <Route path="staff-management" element={<StaffManager />} />
+        <Route path="finance" element={<FinanceManager />} />
+        <Route path="reviews" element={<ReviewsManager />} />
       </Route>
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>

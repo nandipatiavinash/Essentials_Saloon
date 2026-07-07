@@ -129,7 +129,7 @@ export function formatAdminBookingMessage(booking = {}, settings = {}) {
 
 
 
-export function formatInvoiceMessage(invoice, items = [], settings = {}) {
+export function formatInvoiceMessage(invoice, items = [], settings = {}, reviewUrl = null) {
   const salon = "Toni & Guy Essensuals Gorantla";
   const mapsLink = "https://share.google/APJl5CWwP49v7jOCc";
   const instaLink = "https://www.instagram.com/toniandguy_essensual_gorantla/";
@@ -210,6 +210,16 @@ export function formatInvoiceMessage(invoice, items = [], settings = {}) {
 
   msg.push(`We look forward to seeing you again soon!`);
   msg.push(``);
+
+  // Review CTA — only included if reviewUrl is provided
+  if (reviewUrl) {
+    msg.push(`⭐ *How was your experience?*`);
+    msg.push(`Your feedback means the world to us!`);
+    msg.push(`Rate your visit (takes 10 seconds):`);
+    msg.push(reviewUrl);
+    msg.push(``);
+  }
+
   msg.push(`*Follow us on Instagram:*`);
   msg.push(instaLink);
   msg.push(``);

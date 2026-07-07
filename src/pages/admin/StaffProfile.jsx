@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { ArrowLeft, TrendingUp, Users, Scissors, Clock, Award, Calendar } from "lucide-react";
+import { ArrowLeft, TrendingUp, Users, Scissors, Clock, Award, Calendar, DollarSign } from "lucide-react";
 import { useAdmin } from "../../layouts/AdminLayout";
 import { format12HourTime } from "../../lib/api";
 import { useNavigate, useParams } from "react-router-dom";
@@ -7,7 +7,7 @@ import { useNavigate, useParams } from "react-router-dom";
 export default function StaffProfile() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { staff, attendance, invoices } = useAdmin();
+  const { staff, attendance, invoices, tipSplits, staffPayments } = useAdmin();
 
   const member = useMemo(() => (staff || []).find(s => String(s.id) === String(id)), [staff, id]);
 
@@ -33,22 +33,22 @@ export default function StaffProfile() {
     let netSales = 0;
     let servicesCount = 0;
     const clientSet = new Set();
-    let tipsEarned = 0;
+    
+    // Compute tips from tipSplits for this stylist
+    const stylistTips = (tipSplits || []).filter(ts => ts.staff_name === member.name);
+    const tipsEarned = stylistTips.reduce((sum, ts) => sum + Number(ts.tip_amount || 0), 0);
 
     invoicesForStaff.forEach(inv => {
-      if (inv.staff_name === member.name) {
-        tipsEarned += Number(inv.tip || 0);
-        clientSet.add(inv.customer_id || inv.mobile);
-      }
+      clientSet.add(inv.customer_id || inv.mobile);
       (inv.invoice_items || []).forEach(item => {
         const staffMatch = item.staff_name === member.name || (!item.staff_name && inv.staff_name === member.name);
         if (staffMatch && item.item_type !== "membership") {
           netSales += Number(item.total || 0);
           servicesCount += Number(item.quantity || 1);
-          clientSet.add(inv.customer_id || inv.mobile);
         }
       });
     });
+
 
     const daysPresent = attendanceForStaff.filter(a => a.status === "present" || a.status === "late").length;
     let totalHours = 0;
@@ -109,8 +109,8 @@ export default function StaffProfile() {
       <div className="table-wrap" style={{ padding: "3rem", textAlign: "center", color: "var(--a-muted)" }}>
         Staff member not found.
         <br />
-        <button className="tbl-btn" style={{ marginTop: "1rem" }} onClick={() => navigate("/attendance")}>
-          ← Back to Attendance
+        <button className="tbl-btn" style={{ marginTop: "1rem" }} onClick={() => navigate("/staff-management")}>
+          ← Back to Staff & Payroll
         </button>
       </div>
     );
@@ -122,9 +122,10 @@ export default function StaffProfile() {
     <div style={{ display: "flex", flexDirection: "column", gap: "2rem" }}>
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", gap: "1.5rem" }}>
-        <button className="tbl-btn" onClick={() => navigate("/attendance")} style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+        <button className="tbl-btn" onClick={() => navigate("/staff-management")} style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
           <ArrowLeft size={14} /> Back
         </button>
+
         <div>
           <div style={{ fontSize: "1.4rem", fontWeight: 700, color: "var(--a-text)", letterSpacing: "-0.02em" }}>
             {member.name}
@@ -332,6 +333,53 @@ export default function StaffProfile() {
           </tbody>
         </table>
       </div>
+
+      {/* Salary Payout History */}
+      <div className="table-wrap">
+        <div className="table-header">
+          <div className="table-title"><DollarSign size={14} style={{ marginRight: 6 }} />Salary Payout History</div>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Work Month</th>
+              <th>Base Salary</th>
+              <th>Tips Paid</th>
+              <th>Incentives</th>
+              <th>Advances Deducted</th>
+              <th>Net Payout</th>
+              <th>Payment Date</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(staffPayments || [])
+              .filter(p => p.staff_id === member.id)
+              .map(p => (
+                <tr key={p.id}>
+                  <td style={{ fontWeight: 600 }}>
+                    {new Date(p.work_month + "-02").toLocaleDateString("en-IN", { month: "long", year: "numeric" })}
+                  </td>
+                  <td>Rs {Number(p.base_salary || 0).toLocaleString("en-IN")}</td>
+                  <td style={{ color: "var(--gold)" }}>Rs {Number(p.tips_earned || 0).toLocaleString("en-IN")}</td>
+                  <td>Rs {Number(p.incentives || 0).toLocaleString("en-IN")}</td>
+                  <td style={{ color: "#b71c1c" }}>Rs {Number(p.advances_deducted || 0).toLocaleString("en-IN")}</td>
+                  <td style={{ fontWeight: "bold" }}>Rs {Number(p.net_payable || 0).toLocaleString("en-IN")}</td>
+                  <td>{p.payment_date ? new Date(p.payment_date).toLocaleDateString("en-IN") : "—"}</td>
+                  <td>
+                    <span className="badge" style={{ background: p.status === "unpaid" ? "rgba(183,28,28,0.08)" : "rgba(46,125,50,0.08)", color: p.status === "unpaid" ? "#b71c1c" : "#2e7d32", padding: "2px 6px" }}>
+                      {p.status.toUpperCase()}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            {!(staffPayments || []).filter(p => p.staff_id === member.id).length && (
+              <tr><td colSpan={8} style={{ textAlign: "center", padding: "2rem", color: "var(--a-muted)" }}>No salary payments recorded for this stylist.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
+
