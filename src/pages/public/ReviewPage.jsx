@@ -1,9 +1,10 @@
 import { useState, useEffect } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import { fetchInvoiceByReviewToken, submitReview } from "../../lib/api";
 
 export default function ReviewPage() {
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const rawToken = searchParams.get("token");
   const token = rawToken ? rawToken.trim() : null;
 
@@ -29,6 +30,7 @@ export default function ReviewPage() {
       .then((data) => {
         if (!data) {
           setInvoice(null);
+          navigate("/review", { replace: true });
         } else {
           setInvoice(data);
         }
@@ -36,9 +38,10 @@ export default function ReviewPage() {
       .catch((err) => {
         console.error("Error loading invoice review data", err);
         setInvoice(null);
+        navigate("/review", { replace: true });
       })
       .finally(() => setLoading(false));
-  }, [token]);
+  }, [token, navigate]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();

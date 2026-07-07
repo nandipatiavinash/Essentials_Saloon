@@ -1105,6 +1105,12 @@ export async function submitReview(payload) {
     reviewed_at: new Date().toISOString(),
   });
   if (error) throw error;
+
+  // Clear review_token on the invoice once submitted so it cannot be used again
+  if (payload.invoice_id) {
+    await t("invoices").update({ review_token: null }).eq("id", payload.invoice_id);
+  }
+  
   return true;
 }
 
