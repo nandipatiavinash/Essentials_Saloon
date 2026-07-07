@@ -217,7 +217,7 @@ export default function AdminLayout() {
       .then(setAdminData)
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [location.pathname]);
+  }, []);
 
   // ── Low stock toast (kept) ─────────────────────────────────────────────────
   useEffect(() => {
