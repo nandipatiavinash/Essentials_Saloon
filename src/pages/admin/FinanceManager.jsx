@@ -30,10 +30,32 @@ export default function FinanceManager() {
   const [registerNotes, setRegisterNotes] = useState("");
   const [cashRegisterExpenseAmount, setCashRegisterExpenseAmount] = useState("");
   const [cashRegisterExpenseNotesInput, setCashRegisterExpenseNotesInput] = useState("");
+  
+  const [editingExpense, setEditingExpense] = useState(null); // null | expense
+
+  const isTodayOrYesterday = (dateStr) => {
+    if (!dateStr) return false;
+    const today = new Date();
+    const formatYMD = (d) => {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, "0");
+      const day = String(d.getDate()).padStart(2, "0");
+      return `${y}-${m}-${day}`;
+    };
+    const todayYMD = formatYMD(today);
+    
+    const yesterday = new Date();
+    yesterday.setDate(today.getDate() - 1);
+    const yesterdayYMD = formatYMD(yesterday);
+    
+    const targetYMD = dateStr.slice(0, 10);
+    return targetYMD === todayYMD || targetYMD === yesterdayYMD;
+  };
 
   const activeRegister = useMemo(() => {
     return (cashRegister || []).find(r => r.date === regDate);
   }, [cashRegister, regDate]);
+
 
   const salesForDate = useMemo(() => {
     const list = (invoices || []).filter(inv => {
@@ -104,6 +126,10 @@ export default function FinanceManager() {
   };
 
   const handleOpenRegister = async () => {
+    if (!isTodayOrYesterday(regDate)) {
+      toast.error("Registers can only be opened or managed for today or yesterday.");
+      return;
+    }
     if (!openingCashInput || isNaN(openingCashInput)) {
       toast.error("Please enter a valid opening cash amount");
       return;
@@ -123,6 +149,10 @@ export default function FinanceManager() {
 
   const handleAddRegisterExpense = async (e) => {
     e.preventDefault();
+    if (!isTodayOrYesterday(regDate)) {
+      toast.error("Register payouts can only be logged for today or yesterday.");
+      return;
+    }
     if (!activeRegister) return;
     const amt = Number(cashRegisterExpenseAmount);
     if (!cashRegisterExpenseAmount || isNaN(amt) || amt <= 0) {
@@ -159,6 +189,10 @@ export default function FinanceManager() {
 
   const handleCloseRegister = async (e) => {
     e.preventDefault();
+    if (!isTodayOrYesterday(regDate)) {
+      toast.error("Registers can only be closed for today or yesterday.");
+      return;
+    }
     if (!activeRegister) return;
     if (!closingCashInput || isNaN(closingCashInput)) {
       toast.error("Please enter a valid closing cash amount");
@@ -177,6 +211,7 @@ export default function FinanceManager() {
       setSaving(false);
     }
   };
+
 
   const handleSendEodEmail = async () => {
     if (!activeRegister) return;
@@ -270,6 +305,10 @@ Report generated: ${new Date().toLocaleString("en-IN")}
 
   const handleAddExpense = async (e) => {
     e.preventDefault();
+    if (!isTodayOrYesterday(newExpense.date)) {
+      toast.error("Expenses can only be logged for today or yesterday.");
+      return;
+    }
     if (!newExpense.category) {
       toast.error("Please select a category");
       return;
@@ -306,6 +345,11 @@ Report generated: ${new Date().toLocaleString("en-IN")}
   };
 
   const handleDeleteExpense = async (id) => {
+    const exp = (expenses || []).find(x => x.id === id);
+    if (exp && !isTodayOrYesterday(exp.date)) {
+      toast.error("Expenses can only be deleted for today or yesterday.");
+      return;
+    }
     if (!window.confirm("Delete this expense record?")) return;
     try {
       await deleteExpense(id);
@@ -315,6 +359,36 @@ Report generated: ${new Date().toLocaleString("en-IN")}
       toast.error(err.message || "Failed to delete expense");
     }
   };
+
+  const handleUpdateExpense = async (e) => {
+    e.preventDefault();
+
+    if (!isTodayOrYesterday(editingExpense.date)) {
+      toast.error("Expenses can only be modified for today or yesterday.");
+      return;
+    }
+    if (!editingExpense.category) {
+      toast.error("Please select a category");
+      return;
+    }
+    if (!editingExpense.amount || Number(editingExpense.amount) <= 0) {
+      toast.error("Enter a valid amount");
+      return;
+    }
+    setSaving(true);
+    try {
+      await saveExpense(editingExpense);
+      toast.success("Expense updated successfully!");
+      setEditingExpense(null);
+      reload();
+    } catch (err) {
+      toast.error(err.message || "Failed to update expense");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+
 
   const handleSaveCustomCategory = async (e) => {
     e.preventDefault();
@@ -830,11 +904,15 @@ Report generated: ${new Date().toLocaleString("en-IN")}
                       </td>
                       <td style={{ textAlign: "right" }}>
                         {!e.is_system_entry ? (
-                          <button className="tbl-btn danger" style={{ padding: "0.15rem 0.45rem", fontSize: "0.7rem" }} onClick={() => handleDeleteExpense(e.id)}>Delete</button>
+                          <div style={{ display: "flex", gap: "0.25rem", justifyContent: "flex-end" }}>
+                            <button type="button" className="tbl-btn" style={{ padding: "0.15rem 0.45rem", fontSize: "0.7rem" }} onClick={() => setEditingExpense(e)}>Edit</button>
+                            <button type="button" className="tbl-btn danger" style={{ padding: "0.15rem 0.45rem", fontSize: "0.7rem" }} onClick={() => handleDeleteExpense(e.id)}>Delete</button>
+                          </div>
                         ) : (
                           <span style={{ fontSize: "0.72rem", color: "#999" }}>Locked</span>
                         )}
                       </td>
+
                     </tr>
                   );
                 })}
@@ -1022,6 +1100,66 @@ Report generated: ${new Date().toLocaleString("en-IN")}
           </div>
         </div>
       )}
+
+      {/* Edit Expense Modal */}
+      {editingExpense && (
+        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setEditingExpense(null)}>
+          <div className="modal" style={{ maxWidth: "450px" }}>
+            <div className="modal-header">
+              <div className="modal-title">Edit Expense Entry</div>
+              <button className="modal-close" onClick={() => setEditingExpense(null)}>✕</button>
+            </div>
+            <div className="modal-body">
+              <form id="edit-expense-form" onSubmit={handleUpdateExpense}>
+                <div className="form-group" style={{ marginBottom: "1rem" }}>
+                  <label className="form-label">Category *</label>
+                  <select className="form-input" value={editingExpense.category} onChange={e => setEditingExpense({ ...editingExpense, category: e.target.value })} required>
+                    {(expenseCategories || []).map(c => (
+                      <option key={c.id} value={c.name}>{c.icon} {c.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="form-group" style={{ marginBottom: "1rem" }}>
+                  <label className="form-label">Description / Vendor / Item Details</label>
+                  <input className="form-input" value={editingExpense.description} onChange={e => setEditingExpense({ ...editingExpense, description: e.target.value })} placeholder="Details..." />
+                </div>
+                <div className="form-row" style={{ marginBottom: "1rem" }}>
+                  <div className="form-group">
+                    <label className="form-label">Amount (₹) *</label>
+                    <input type="number" min="1" className="form-input" value={editingExpense.amount} onChange={e => setEditingExpense({ ...editingExpense, amount: Number(e.target.value) })} required />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Transaction Date *</label>
+                    <input type="date" className="form-input" value={editingExpense.date} onChange={e => setEditingExpense({ ...editingExpense, date: e.target.value })} required />
+                  </div>
+                </div>
+                <div className="form-row">
+                  <div className="form-group">
+                    <label className="form-label">Payment Mode *</label>
+                    <select className="form-input" value={editingExpense.payment_method} onChange={e => setEditingExpense({ ...editingExpense, payment_method: e.target.value })} required>
+                      <option value="Cash">Cash</option>
+                      <option value="UPI">UPI</option>
+                      <option value="Bank Transfer">Bank Transfer</option>
+                      <option value="Card">Card</option>
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Ref Number / Bill Receipt No.</label>
+                    <input className="form-input" value={editingExpense.reference || ""} onChange={e => setEditingExpense({ ...editingExpense, reference: e.target.value })} placeholder="Receipt number" />
+                  </div>
+                </div>
+              </form>
+            </div>
+            <div className="modal-footer">
+              <button type="button" className="tbl-btn" onClick={() => setEditingExpense(null)}>Cancel</button>
+              <button type="submit" form="edit-expense-form" className="btn-add" disabled={saving}>
+                {saving ? "Updating..." : "Save Changes"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
+
