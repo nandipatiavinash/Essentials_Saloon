@@ -249,21 +249,23 @@ export default function StaffManager() {
       // Loop through all active staff and generate unpaid staff_payment row if not exists
       const activeStaff = (staff || []).filter(s => s.active);
       let count = 0;
+      let updatedCount = 0;
       for (const s of activeStaff) {
-        const hasPayment = (staffPayments || []).some(p => p.staff_id === s.id && p.work_month === payrollMonth);
-        if (!hasPayment) {
-          // Compute tips for this staff in the month
-          const monthTips = (tipSplits || []).filter(ts => ts.staff_name === s.name && (
-            (invoices || []).some(inv => inv.id === ts.invoice_id && (inv.billing_at || "").slice(0, 7) === payrollMonth)
-          ));
-          const computedTips = monthTips.reduce((acc, t) => acc + Number(t.tip_amount || 0), 0);
+        // Compute tips for this staff in the month
+        const monthTips = (tipSplits || []).filter(ts => ts.staff_name === s.name && (
+          (invoices || []).some(inv => inv.id === ts.invoice_id && (inv.billing_at || "").slice(0, 7) === payrollMonth)
+        ));
+        const computedTips = monthTips.reduce((acc, t) => acc + Number(t.tip_amount || 0), 0);
 
-          // Compute pending advances for this month
-          const monthAdvances = (staffAdvances || []).filter(a => a.staff_id === s.id && a.work_month === payrollMonth && a.status === "pending");
-          const computedAdvances = monthAdvances.reduce((acc, a) => acc + Number(a.amount || 0), 0);
+        // Compute pending advances for this month
+        const monthAdvances = (staffAdvances || []).filter(a => a.staff_id === s.id && a.work_month === payrollMonth && a.status === "pending");
+        const computedAdvances = monthAdvances.reduce((acc, a) => acc + Number(a.amount || 0), 0);
 
-          const net = Number(s.base_salary || 0) + computedTips - computedAdvances;
+        const net = Number(s.base_salary || 0) + computedTips - computedAdvances;
 
+        const existingPayment = (staffPayments || []).find(p => p.staff_id === s.id && p.work_month === payrollMonth);
+
+        if (!existingPayment) {
           await saveStaffPayment({
             staff_id: s.id,
             work_month: payrollMonth,
@@ -278,9 +280,20 @@ export default function StaffManager() {
             notes: ""
           });
           count++;
+        } else if (existingPayment.status === "unpaid") {
+          // Re-sync unpaid payment rows with current directory settings & transactions
+          await saveStaffPayment({
+            ...existingPayment,
+            base_salary: s.base_salary,
+            tips_earned: computedTips,
+            advances_deducted: computedAdvances,
+            net_payable: Number(s.base_salary || 0) + computedTips + Number(existingPayment.incentives || 0) - computedAdvances - Number(existingPayment.other_deductions || 0),
+            scheduled_payment_date: scheduledDateInput || existingPayment.scheduled_payment_date
+          });
+          updatedCount++;
         }
       }
-      toast.success(`Worksheet generated! Created ${count} new records.`);
+      toast.success(`Worksheet generated! Created ${count} and synced ${updatedCount} records.`);
       reload();
     } catch (err) {
       toast.error(err.message || "Failed to generate worksheet");
