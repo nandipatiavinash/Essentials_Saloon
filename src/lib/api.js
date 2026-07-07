@@ -2,12 +2,17 @@ import { supabase } from "./supabase";
 
 const t = (name) => supabase.from(name);
 const optional = async (promise, fallback) => {
-  const res = await promise;
-  if (res.error) {
-    console.warn("Optional admin data unavailable:", res.error.message);
+  try {
+    const res = await promise;
+    if (res.error) {
+      console.warn("Optional admin data unavailable:", res.error.message);
+      return fallback;
+    }
+    return res.data ?? fallback;
+  } catch (err) {
+    console.warn("Optional admin data threw:", err.message);
     return fallback;
   }
-  return res.data ?? fallback;
 };
 
 export function getISTDate() {
