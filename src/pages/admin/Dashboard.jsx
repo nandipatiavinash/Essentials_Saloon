@@ -6,7 +6,7 @@ import toast from "react-hot-toast";
 import { useState, useMemo } from "react";
 
 export default function Dashboard() {
-  const { services, bookings, offers, invoices, customers, inventory, reviews, staffPayments, reload } = useAdmin();
+  const { services, bookings, offers, invoices, customers, inventory, reviews, staffPayments, fixedExpenses, fixedExpensePayments, reload } = useAdmin();
   const navigate = useNavigate();
   const [resetting, setResetting] = useState(false);
   const [revenueModal, setRevenueModal] = useState(null); // null | 'today' | 'monthly'
@@ -29,6 +29,25 @@ export default function Dashboard() {
     const today = new Date().toISOString().slice(0, 10);
     return (staffPayments || []).filter(p => p.status === "unpaid" && p.scheduled_payment_date && p.scheduled_payment_date < today);
   }, [staffPayments]);
+
+  // Compute unpaid fixed expenses for current month
+  const currentMonth = new Date().toISOString().slice(0, 7);
+  const unpaidFixedExpenses = useMemo(() => {
+    const paymentMap = {};
+    (fixedExpensePayments || []).filter(p => p.work_month === currentMonth).forEach(p => {
+      paymentMap[p.fixed_expense_id] = p;
+    });
+    const today = new Date();
+    return (fixedExpenses || []).filter(f => {
+      if (f.active === false) return false;
+      const payment = paymentMap[f.id];
+      return !payment || payment.status !== "paid";
+    }).map(f => {
+      const dueDateThisMonth = new Date(today.getFullYear(), today.getMonth(), f.due_day || 1);
+      const daysUntilDue = Math.ceil((dueDateThisMonth - today) / (1000 * 60 * 60 * 24));
+      return { ...f, daysUntilDue };
+    });
+  }, [fixedExpenses, fixedExpensePayments, currentMonth]);
 
 
   const getRevenueBreakdown = (range) => {
@@ -116,6 +135,35 @@ export default function Dashboard() {
           <AlertTriangle size={18} style={{ color: "#b71c1c" }} />
           <div style={{ fontSize: "0.82rem", color: "#b71c1c", fontWeight: "bold" }}>
             ⚠️ OVERDUE SALARY PAYMENTS: {overdueSalaries.length} employee salary payouts are overdue! Click here to review and mark them as paid.
+          </div>
+        </div>
+      )}
+
+      {/* Fixed Expenses Reminder */}
+      {unpaidFixedExpenses.length > 0 && (
+        <div style={{ background: "rgba(245,124,0,0.06)", border: "1px solid rgba(245,124,0,0.25)", borderRadius: "4px", marginBottom: "1.5rem", overflow: "hidden", cursor: "pointer" }} onClick={() => navigate("/finance")}>
+          <div style={{ background: "rgba(245,124,0,0.12)", padding: "0.75rem 1.25rem", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontWeight: 700, fontSize: "0.78rem", color: "#e65100" }}>
+              <AlertTriangle size={15} />
+              📌 FIXED EXPENSES PENDING — {unpaidFixedExpenses.length} item{unpaidFixedExpenses.length > 1 ? "s" : ""} unpaid this month
+            </div>
+            <div style={{ fontSize: "0.78rem", fontWeight: 700, color: "#e65100" }}>
+              ₹{unpaidFixedExpenses.reduce((s, f) => s + Number(f.amount || 0), 0).toLocaleString("en-IN")} due
+            </div>
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "0", borderTop: "1px solid rgba(245,124,0,0.15)" }}>
+            {unpaidFixedExpenses.map((fx, i) => (
+              <div key={fx.id} style={{ padding: "0.6rem 1.25rem", flex: "1 1 220px", borderRight: i < unpaidFixedExpenses.length - 1 ? "1px solid rgba(245,124,0,0.1)" : "none", borderBottom: "1px solid rgba(245,124,0,0.08)" }}>
+                <div style={{ fontSize: "0.78rem", fontWeight: 600, color: "#333" }}>{fx.name}</div>
+                <div style={{ display: "flex", justifyContent: "space-between", marginTop: "2px" }}>
+                  <span style={{ fontSize: "0.65rem", color: "#777", background: "rgba(0,0,0,0.04)", padding: "1px 6px", borderRadius: "2px" }}>{fx.category}</span>
+                  <span style={{ fontSize: "0.72rem", fontWeight: 700, color: fx.daysUntilDue <= 0 ? "#b71c1c" : fx.daysUntilDue <= 5 ? "#e65100" : "#555" }}>
+                    ₹{Number(fx.amount).toLocaleString("en-IN")}
+                    {fx.due_day && <span style={{ fontWeight: 400, marginLeft: 4, fontSize: "0.6rem" }}>· due {fx.due_day}{["st","nd","rd"][fx.due_day-1]||"th"}</span>}
+                  </span>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}

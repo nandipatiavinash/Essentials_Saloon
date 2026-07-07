@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
-import { Plus, Trash2, X, Download, TrendingUp, TrendingDown, DollarSign, PieChart, AlertTriangle, Mail, CheckCircle, History } from "lucide-react";
+import { Plus, Trash2, X, Download, TrendingUp, TrendingDown, DollarSign, PieChart, AlertTriangle, Mail, CheckCircle, History, Edit2 } from "lucide-react";
 import { useAdmin } from "../../layouts/AdminLayout";
 import toast from "react-hot-toast";
 import { 
@@ -12,13 +12,16 @@ import {
   deleteExpense, 
   saveExpenseCategory, 
   deleteExpenseCategory,
-  saveStaffAdvance
+  saveStaffAdvance,
+  saveFixedExpense,
+  deleteFixedExpense,
+  saveFixedExpensePayment
 } from "../../lib/api";
 
 export default function FinanceManager() {
-  const { invoices, staff, attendance, inventory, cashRegister, expenses, expenseCategories, settings, reload } = useAdmin();
+  const { invoices, staff, attendance, inventory, cashRegister, expenses, expenseCategories, settings, reload, fixedExpenses, fixedExpensePayments } = useAdmin();
 
-  const [activeTab, setActiveTab] = useState("register"); // register | expenses | pl
+  const [activeTab, setActiveTab] = useState("register"); // register | fixed_expenses | pl
 
   // --- GENERAL STATE ---
   const [saving, setSaving] = useState(false);
@@ -331,167 +334,83 @@ Report generated: ${new Date().toLocaleString("en-IN")}
   };
 
   // ==========================================
-  // TAB 2: EXPENSES STATE & ACTIONS
   // ==========================================
-  const [expenseMonth, setExpenseMonth] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
-  const [expenseCatFilter, setExpenseCatFilter] = useState("all");
-  const [categoryModal, setCategoryModal] = useState(null); // null | { name, icon, is_fixed }
-  
-  // Add Expense form state
-  const [newExpense, setNewExpense] = useState({
-    category: "Rent",
-    description: "",
-    amount: "",
-    date: new Date().toISOString().slice(0, 10),
-    payment_method: "Cash",
-    reference: ""
-  });
+  // TAB 2: FIXED EXPENSES STATE & ACTIONS
+  // ==========================================
+  const [fxMonth, setFxMonth] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
+  const [fxModal, setFxModal] = useState(null); // null | { name, category, amount, due_day, notes, active, id? }
+  const [fxSaving, setFxSaving] = useState(false);
 
-  const handleAddExpense = async (e) => {
+  const FX_CATEGORIES = ["Rent", "Electricity", "Water", "Internet", "Staff Room", "Laundry", "Maintenance", "Insurance", "Other"];
+
+  const handleSaveFixedExpense = async (e) => {
     e.preventDefault();
-    if (!isTodayOrYesterday(newExpense.date)) {
-      toast.error("Expenses can only be logged for today or yesterday.");
-      return;
-    }
-    if (!newExpense.category) {
-      toast.error("Please select a category");
-      return;
-    }
-    if (!newExpense.amount || Number(newExpense.amount) <= 0) {
-      toast.error("Enter a valid amount");
-      return;
-    }
-    setSaving(true);
+    if (!fxModal.name) { toast.error("Enter expense name"); return; }
+    if (!fxModal.amount || Number(fxModal.amount) <= 0) { toast.error("Enter a valid amount"); return; }
+    setFxSaving(true);
     try {
-      await saveExpense({
-        category: newExpense.category,
-        description: newExpense.description,
-        amount: Number(newExpense.amount),
-        date: newExpense.date,
-        payment_method: newExpense.payment_method,
-        reference: newExpense.reference
+      await saveFixedExpense({
+        id: fxModal.id,
+        name: fxModal.name,
+        category: fxModal.category || "Rent",
+        amount: Number(fxModal.amount),
+        due_day: Number(fxModal.due_day) || 1,
+        notes: fxModal.notes || null,
+        active: fxModal.active !== false
       });
-      toast.success("Expense log added");
-      setNewExpense({
-        category: "Rent",
-        description: "",
-        amount: "",
-        date: new Date().toISOString().slice(0, 10),
-        payment_method: "Cash",
-        reference: ""
+      toast.success(fxModal.id ? "Fixed expense updated!" : "Fixed expense added!");
+      setFxModal(null);
+      reload();
+    } catch (err) {
+      toast.error(err.message || "Failed to save");
+    } finally {
+      setFxSaving(false);
+    }
+  };
+
+  const handleDeleteFixedExpense = async (id) => {
+    if (!window.confirm("Delete this fixed expense? All payment history will also be removed.")) return;
+    try {
+      await deleteFixedExpense(id);
+      toast.success("Fixed expense deleted");
+      reload();
+    } catch (err) {
+      toast.error(err.message || "Failed to delete");
+    }
+  };
+
+  const handleTogglePayment = async (fxId, currentStatus) => {
+    const newStatus = currentStatus === "paid" ? "unpaid" : "paid";
+    try {
+      await saveFixedExpensePayment({
+        fixed_expense_id: fxId,
+        work_month: fxMonth,
+        status: newStatus,
+        paid_date: newStatus === "paid" ? new Date().toISOString().slice(0, 10) : null
       });
+      toast.success(newStatus === "paid" ? "Marked as Paid ✓" : "Marked as Unpaid");
       reload();
     } catch (err) {
-      toast.error(err.message || "Failed to log expense");
-    } finally {
-      setSaving(false);
+      toast.error(err.message || "Failed to update status");
     }
   };
 
-  const handleDeleteExpense = async (id) => {
-    const exp = (expenses || []).find(x => x.id === id);
-    if (exp && !isTodayOrYesterday(exp.date)) {
-      toast.error("Expenses can only be deleted for today or yesterday.");
-      return;
-    }
-    if (!window.confirm("Delete this expense record?")) return;
-    try {
-      await deleteExpense(id);
-      toast.success("Expense record deleted");
-      reload();
-    } catch (err) {
-      toast.error(err.message || "Failed to delete expense");
-    }
-  };
-
-  const handleUpdateExpense = async (e) => {
-    e.preventDefault();
-
-    if (!isTodayOrYesterday(editingExpense.date)) {
-      toast.error("Expenses can only be modified for today or yesterday.");
-      return;
-    }
-    if (!editingExpense.category) {
-      toast.error("Please select a category");
-      return;
-    }
-    if (!editingExpense.amount || Number(editingExpense.amount) <= 0) {
-      toast.error("Enter a valid amount");
-      return;
-    }
-    setSaving(true);
-    try {
-      await saveExpense(editingExpense);
-      toast.success("Expense updated successfully!");
-      setEditingExpense(null);
-      reload();
-    } catch (err) {
-      toast.error(err.message || "Failed to update expense");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-
-
-  const handleSaveCustomCategory = async (e) => {
-    e.preventDefault();
-    if (!categoryModal.name) return;
-    setSaving(true);
-    try {
-      await saveExpenseCategory({
-        name: categoryModal.name,
-        icon: categoryModal.icon || "💳",
-        is_fixed: categoryModal.is_fixed
-      });
-      toast.success("Custom category added!");
-      setCategoryModal(null);
-      reload();
-    } catch (err) {
-      toast.error(err.message || "Category already exists or failed to create");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const filteredExpenses = useMemo(() => {
-    return (expenses || []).filter(e => {
-      const eMonth = (e.date || "").slice(0, 7);
-      if (expenseMonth && eMonth !== expenseMonth) return false;
-      if (expenseCatFilter !== "all" && e.category !== expenseCatFilter) return false;
-      return true;
+  // Payment lookup for selected month
+  const fxPaymentMap = useMemo(() => {
+    const map = {};
+    (fixedExpensePayments || []).filter(p => p.work_month === fxMonth).forEach(p => {
+      map[p.fixed_expense_id] = p;
     });
-  }, [expenses, expenseMonth, expenseCatFilter]);
+    return map;
+  }, [fixedExpensePayments, fxMonth]);
 
-  const totalFilteredExpense = useMemo(() => {
-    return filteredExpenses.reduce((sum, e) => sum + Number(e.amount || 0), 0);
-  }, [filteredExpenses]);
+  const fxSummary = useMemo(() => {
+    const active = (fixedExpenses || []).filter(f => f.active !== false);
+    const total = active.reduce((s, f) => s + Number(f.amount || 0), 0);
+    const paid = active.filter(f => fxPaymentMap[f.id]?.status === "paid").reduce((s, f) => s + Number(f.amount || 0), 0);
+    return { total, paid, unpaid: total - paid, count: active.length };
+  }, [fixedExpenses, fxPaymentMap]);
 
-  const exportExpensesCSV = () => {
-    if (!filteredExpenses.length) {
-      toast.error("No expenses to export");
-      return;
-    }
-    const headers = ["Date", "Category", "Description", "Amount", "Payment Method", "Reference", "Notes"];
-    const rows = filteredExpenses.map(e => [
-      e.date || "",
-      e.category || "",
-      e.description || "",
-      e.amount || 0,
-      e.payment_method || "",
-      e.reference || "",
-      e.notes || ""
-    ]);
-    const csvContent = "data:text/csv;charset=utf-8," 
-      + [headers.join(","), ...rows.map(e => e.map(val => `"${String(val).replace(/"/g, '""')}"`).join(","))].join("\n");
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `expenses_ledger_${expenseMonth || "all"}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
 
   // ==========================================
   // TAB 3: PROFIT & LOSS COMPUTATIONS
@@ -624,8 +543,8 @@ Report generated: ${new Date().toLocaleString("en-IN")}
         <button className={`tbl-btn ${activeTab === "register" ? "active" : ""}`} onClick={() => setActiveTab("register")}>
           💵 Cash Drawer
         </button>
-        <button className={`tbl-btn ${activeTab === "expenses" ? "active" : ""}`} onClick={() => setActiveTab("expenses")}>
-          💳 Expenses Ledger
+        <button className={`tbl-btn ${activeTab === "fixed_expenses" ? "active" : ""}`} onClick={() => setActiveTab("fixed_expenses")}>
+          📌 Fixed Expenses
         </button>
         <button className={`tbl-btn ${activeTab === "pl" ? "active" : ""}`} onClick={() => setActiveTab("pl")}>
           📊 Profit & Loss
@@ -910,138 +829,176 @@ Report generated: ${new Date().toLocaleString("en-IN")}
       )}
 
       {/* ================================================================= */}
-      {/* TAB 2: EXPENSES LEDGER */}
+      {/* TAB 2: FIXED EXPENSES */}
       {/* ================================================================= */}
-      {activeTab === "expenses" && (
+      {activeTab === "fixed_expenses" && (
         <>
-          {/* Quick categories pills & custom creator */}
-          <div className="pos-panel" style={{ padding: "1.5rem", marginBottom: "1.5rem" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "1rem" }}>
-              <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap" }}>
-                <button className={`tbl-btn ${expenseCatFilter === "all" ? "active" : ""}`} onClick={() => setExpenseCatFilter("all")}>All Categories</button>
-                {(expenseCategories || []).map(cat => (
-                  <button key={cat.id} className={`tbl-btn ${expenseCatFilter === cat.name ? "active" : ""}`} onClick={() => setExpenseCatFilter(cat.name)}>
-                    {cat.icon} {cat.name}
-                  </button>
-                ))}
-              </div>
-              <button className="btn-add" onClick={() => setCategoryModal({ name: "", icon: "💳", is_fixed: false })}>
-                + Create Custom Category
-              </button>
+          {/* Summary Cards */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "1rem", marginBottom: "1.5rem" }}>
+            <div className="pos-panel" style={{ padding: "1.25rem", textAlign: "center" }}>
+              <div style={{ fontSize: "0.6rem", textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--a-muted)", marginBottom: "0.4rem" }}>Total Monthly Fixed</div>
+              <div style={{ fontSize: "1.5rem", fontWeight: 700 }}>₹{fxSummary.total.toLocaleString("en-IN")}</div>
+              <div style={{ fontSize: "0.62rem", color: "var(--a-muted)" }}>{fxSummary.count} recurring expenses</div>
+            </div>
+            <div className="pos-panel" style={{ padding: "1.25rem", textAlign: "center", borderLeft: "4px solid #2e7d32" }}>
+              <div style={{ fontSize: "0.6rem", textTransform: "uppercase", letterSpacing: "0.1em", color: "#2e7d32", marginBottom: "0.4rem" }}>Paid This Month</div>
+              <div style={{ fontSize: "1.5rem", fontWeight: 700, color: "#2e7d32" }}>₹{fxSummary.paid.toLocaleString("en-IN")}</div>
+              <div style={{ fontSize: "0.62rem", color: "var(--a-muted)" }}>{(fixedExpenses || []).filter(f => f.active !== false && fxPaymentMap[f.id]?.status === "paid").length} items paid</div>
+            </div>
+            <div className="pos-panel" style={{ padding: "1.25rem", textAlign: "center", borderLeft: `4px solid ${fxSummary.unpaid > 0 ? "#b71c1c" : "#999"}` }}>
+              <div style={{ fontSize: "0.6rem", textTransform: "uppercase", letterSpacing: "0.1em", color: fxSummary.unpaid > 0 ? "#b71c1c" : "var(--a-muted)", marginBottom: "0.4rem" }}>Still Unpaid</div>
+              <div style={{ fontSize: "1.5rem", fontWeight: 700, color: fxSummary.unpaid > 0 ? "#b71c1c" : "inherit" }}>₹{fxSummary.unpaid.toLocaleString("en-IN")}</div>
+              <div style={{ fontSize: "0.62rem", color: "var(--a-muted)" }}>{(fixedExpenses || []).filter(f => f.active !== false && fxPaymentMap[f.id]?.status !== "paid").length} items pending</div>
             </div>
           </div>
 
-          {/* Row form for adding expenses */}
-          <form onSubmit={handleAddExpense} className="pos-panel" style={{ padding: "1.5rem", marginBottom: "1.5rem" }}>
-            <div className="table-title" style={{ marginBottom: "1rem", fontSize: "0.85rem" }}>Log Business Expense</div>
-            <div className="form-row">
-              <div className="form-group" style={{ flex: 1 }}>
-                <label className="form-label">Category *</label>
-                <select className="form-input" value={newExpense.category} onChange={e => setNewExpense({ ...newExpense, category: e.target.value })} required>
-                  {(expenseCategories || []).map(c => (
-                    <option key={c.id} value={c.name}>{c.icon} {c.name}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="form-group" style={{ flex: 2 }}>
-                <label className="form-label">Description / Vendor / Item Details</label>
-                <input className="form-input" value={newExpense.description} onChange={e => setNewExpense({ ...newExpense, description: e.target.value })} placeholder="e.g. swept materials, water cans, tea..." />
-              </div>
-              <div className="form-group" style={{ flex: 1 }}>
-                <label className="form-label">Amount (₹) *</label>
-                <input type="number" min="1" className="form-input" value={newExpense.amount} onChange={e => setNewExpense({ ...newExpense, amount: e.target.value })} required />
-              </div>
-            </div>
-            <div className="form-row" style={{ marginTop: "0.5rem" }}>
-              <div className="form-group" style={{ flex: 1 }}>
-                <label className="form-label">Transaction Date *</label>
-                <input type="date" className="form-input" value={newExpense.date} onChange={e => setNewExpense({ ...newExpense, date: e.target.value })} required />
-              </div>
-              <div className="form-group" style={{ flex: 1 }}>
-                <label className="form-label">Payment Mode *</label>
-                <select className="form-input" value={newExpense.payment_method} onChange={e => setNewExpense({ ...newExpense, payment_method: e.target.value })} required>
-                  <option value="Cash">Cash</option>
-                  <option value="UPI">UPI</option>
-                  <option value="Bank Transfer">Bank Transfer</option>
-                  <option value="Card">Card</option>
-                </select>
-              </div>
-              <div className="form-group" style={{ flex: 1 }}>
-                <label className="form-label">Ref Number / Bill Reciept No.</label>
-                <input className="form-input" value={newExpense.reference} onChange={e => setNewExpense({ ...newExpense, reference: e.target.value })} placeholder="Optional receipt no." />
-              </div>
-            </div>
-            <button className="btn-add" type="submit" style={{ marginTop: "1rem", width: "100%" }} disabled={saving}>
-              {saving ? "Adding..." : "+ Record Expense Entry"}
-            </button>
-          </form>
-
-          {/* Expenses Log Table */}
+          {/* Header: Month picker + Add button */}
           <div className="table-wrap">
             <div className="table-header">
-              <div className="table-title">Expenses Ledger (Filtered)</div>
-              <div className="table-actions" style={{ display: "flex", gap: "0.5rem" }}>
-                <input type="month" className="admin-search" value={expenseMonth} onChange={e => setExpenseMonth(e.target.value)} style={{ width: 150 }} />
-                <button className="tbl-btn" onClick={exportExpensesCSV}>
-                  <Download size={14} style={{ marginRight: 6 }} /> Export
+              <div className="table-title">📌 Fixed Expenses</div>
+              <div className="table-actions" style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+                <span style={{ fontSize: "0.72rem", color: "var(--a-muted)" }}>Tracking month:</span>
+                <input
+                  type="month"
+                  className="admin-search"
+                  value={fxMonth}
+                  onChange={e => setFxMonth(e.target.value)}
+                  style={{ width: 150 }}
+                />
+                <button
+                  className="btn-add"
+                  onClick={() => setFxModal({ name: "", category: "Rent", amount: "", due_day: 1, notes: "", active: true })}
+                >
+                  <Plus size={14} style={{ marginRight: 6 }} /> Add Fixed Expense
                 </button>
               </div>
             </div>
+
             <table>
               <thead>
                 <tr>
-                  <th>Date</th>
+                  <th>Expense Name</th>
                   <th>Category</th>
-                  <th>Description</th>
-                  <th style={{ textAlign: "right" }}>Amount</th>
-                  <th>Payment Method</th>
-                  <th>Reference</th>
+                  <th style={{ textAlign: "right" }}>Monthly Amount</th>
+                  <th style={{ textAlign: "center" }}>Due Day</th>
+                  <th>Notes</th>
+                  <th style={{ textAlign: "center" }}>Status ({new Date(fxMonth + "-01").toLocaleDateString("en-IN", { month: "short", year: "2-digit" })})</th>
                   <th style={{ textAlign: "right" }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredExpenses.map(e => {
-                  const categoryMeta = (expenseCategories || []).find(cat => cat.name === e.category);
-                  const icon = categoryMeta ? categoryMeta.icon : "💳";
+                {(fixedExpenses || []).filter(f => f.active !== false).map(fx => {
+                  const payment = fxPaymentMap[fx.id];
+                  const isPaid = payment?.status === "paid";
                   return (
-                    <tr key={e.id}>
-                      <td style={{ fontSize: "0.72rem", color: "var(--a-muted)" }}>{e.date}</td>
+                    <tr key={fx.id}>
+                      <td style={{ fontWeight: 600 }}>{fx.name}</td>
                       <td>
-                        <span className="badge badge-gold" style={{ padding: "2px 6px" }}>{icon} {e.category}</span>
+                        <span className="badge badge-gold" style={{ padding: "2px 8px" }}>{fx.category}</span>
                       </td>
-                      <td>
-                        <div>{e.description || "—"}</div>
-                        {e.notes && <div style={{ fontSize: "0.62rem", color: "var(--a-muted)" }}>{e.notes}</div>}
+                      <td style={{ textAlign: "right", fontWeight: "bold", fontSize: "0.95rem" }}>₹{Number(fx.amount).toLocaleString("en-IN")}</td>
+                      <td style={{ textAlign: "center", color: "var(--a-muted)", fontSize: "0.72rem" }}>
+                        {fx.due_day ? `${fx.due_day}${["st","nd","rd"][fx.due_day-1]||"th"} of month` : "—"}
                       </td>
-                      <td style={{ textAlign: "right", fontWeight: "bold" }}>Rs {Number(e.amount).toLocaleString("en-IN")}</td>
-                      <td>{e.payment_method}</td>
-                      <td>
-                        {e.is_system_entry ? (
-                          <span style={{ fontSize: "0.65rem", background: "rgba(0,0,0,0.04)", padding: "2px 6px", borderRadius: "2px", fontWeight: "bold" }}>🔗 SYSTEM PAY</span>
-                        ) : e.reference || "—"}
-                      </td>
-                      <td style={{ textAlign: "right" }}>
-                        {!e.is_system_entry ? (
-                          <div style={{ display: "flex", gap: "0.25rem", justifyContent: "flex-end" }}>
-                            <button type="button" className="tbl-btn" style={{ padding: "0.15rem 0.45rem", fontSize: "0.7rem" }} onClick={() => setEditingExpense(e)}>Edit</button>
-                            <button type="button" className="tbl-btn danger" style={{ padding: "0.15rem 0.45rem", fontSize: "0.7rem" }} onClick={() => handleDeleteExpense(e.id)}>Delete</button>
+                      <td style={{ fontSize: "0.72rem", color: "var(--a-muted)" }}>{fx.notes || "—"}</td>
+                      <td style={{ textAlign: "center" }}>
+                        <button
+                          type="button"
+                          onClick={() => handleTogglePayment(fx.id, payment?.status)}
+                          style={{
+                            padding: "0.3rem 0.9rem",
+                            borderRadius: "999px",
+                            border: "none",
+                            cursor: "pointer",
+                            fontWeight: 700,
+                            fontSize: "0.7rem",
+                            letterSpacing: "0.06em",
+                            background: isPaid ? "#e8f5e9" : "#fce4ec",
+                            color: isPaid ? "#2e7d32" : "#b71c1c",
+                            transition: "all 0.15s"
+                          }}
+                        >
+                          {isPaid ? "✓ PAID" : "✗ UNPAID"}
+                        </button>
+                        {isPaid && payment?.paid_date && (
+                          <div style={{ fontSize: "0.58rem", color: "var(--a-muted)", marginTop: "2px" }}>
+                            Paid on {new Date(payment.paid_date).toLocaleDateString("en-IN")}
                           </div>
-                        ) : (
-                          <span style={{ fontSize: "0.72rem", color: "#999" }}>Locked</span>
                         )}
                       </td>
-
+                      <td style={{ textAlign: "right" }}>
+                        <div style={{ display: "flex", gap: "0.25rem", justifyContent: "flex-end" }}>
+                          <button
+                            type="button"
+                            className="tbl-btn"
+                            style={{ padding: "0.15rem 0.45rem", fontSize: "0.7rem" }}
+                            onClick={() => setFxModal({ ...fx })}
+                          >
+                            <Edit2 size={11} />
+                          </button>
+                          <button
+                            type="button"
+                            className="tbl-btn danger"
+                            style={{ padding: "0.15rem 0.45rem", fontSize: "0.7rem" }}
+                            onClick={() => handleDeleteFixedExpense(fx.id)}
+                          >
+                            <Trash2 size={11} />
+                          </button>
+                        </div>
+                      </td>
                     </tr>
                   );
                 })}
-                <tr style={{ background: "rgba(0,0,0,0.02)", fontWeight: "bold" }}>
-                  <td colSpan={3}>Total Expenses this month:</td>
-                  <td style={{ textAlign: "right", fontSize: "0.95rem" }}>Rs {totalFilteredExpense.toLocaleString("en-IN")}</td>
-                  <td colSpan={3}></td>
-                </tr>
+                {!(fixedExpenses || []).filter(f => f.active !== false).length && (
+                  <tr>
+                    <td colSpan={7} style={{ textAlign: "center", padding: "3rem", color: "var(--a-muted)" }}>
+                      <div style={{ fontSize: "2rem", marginBottom: "0.5rem" }}>📌</div>
+                      No fixed expenses added yet. Click "Add Fixed Expense" to track rent, electricity and other recurring costs.
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
+
+          {/* Add / Edit Modal */}
+          {fxModal && (
+            <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <form onSubmit={handleSaveFixedExpense} style={{ background: "#fff", padding: "2rem", borderRadius: "8px", width: "100%", maxWidth: 460, boxShadow: "0 8px 40px rgba(0,0,0,0.18)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.5rem" }}>
+                  <div className="table-title">{fxModal.id ? "Edit Fixed Expense" : "Add Fixed Expense"}</div>
+                  <button type="button" style={{ background: "none", border: "none", cursor: "pointer" }} onClick={() => setFxModal(null)}><X size={18} /></button>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Expense Name *</label>
+                  <input className="form-input" placeholder="e.g. Salon Rent, Staff Room Rent, Electricity..." value={fxModal.name} onChange={e => setFxModal({ ...fxModal, name: e.target.value })} required />
+                </div>
+                <div className="form-row">
+                  <div className="form-group" style={{ flex: 1 }}>
+                    <label className="form-label">Category *</label>
+                    <select className="form-input" value={fxModal.category} onChange={e => setFxModal({ ...fxModal, category: e.target.value })} required>
+                      {FX_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </div>
+                  <div className="form-group" style={{ flex: 1 }}>
+                    <label className="form-label">Monthly Amount (₹) *</label>
+                    <input type="number" min="1" className="form-input" value={fxModal.amount} onChange={e => setFxModal({ ...fxModal, amount: e.target.value })} required />
+                  </div>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Due Day of Month (1–31)</label>
+                  <input type="number" min="1" max="31" className="form-input" value={fxModal.due_day} onChange={e => setFxModal({ ...fxModal, due_day: e.target.value })} placeholder="e.g. 1 for 1st of every month" />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Notes</label>
+                  <input className="form-input" placeholder="Optional notes (e.g. landlord name, contract details)" value={fxModal.notes} onChange={e => setFxModal({ ...fxModal, notes: e.target.value })} />
+                </div>
+                <button className="btn-add" type="submit" style={{ width: "100%", marginTop: "0.5rem" }} disabled={fxSaving}>
+                  {fxSaving ? "Saving..." : (fxModal.id ? "Update Fixed Expense" : "Add Fixed Expense")}
+                </button>
+              </form>
+            </div>
+          )}
         </>
       )}
 

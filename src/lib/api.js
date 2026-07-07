@@ -53,7 +53,8 @@ export async function fetchAdminData() {
     cats, svcs, offs, gal, settRes, bkgs,
     invoices, customers, transactions, reportLogs,
     staff, attendance, inventory, cashRegister, attendanceLogs,
-    staffPayments, staffAdvances, expenses, expenseCategories, tipSplits, reviews
+    staffPayments, staffAdvances, expenses, expenseCategories, tipSplits, reviews,
+    fixedExpenses, fixedExpensePayments
   ] = await Promise.all([
     t("categories").select("*").order("id"),
     t("services").select("*").order("id"),
@@ -76,6 +77,8 @@ export async function fetchAdminData() {
     optional(t("expense_categories").select("*").order("sort_order"), []),
     optional(t("invoice_tip_splits").select("*").order("created_at", { ascending: false }).limit(500), []),
     optional(t("reviews").select("*").order("created_at", { ascending: false }).limit(200), []),
+    optional(t("fixed_expenses").select("*").order("created_at", { ascending: true }), []),
+    optional(t("fixed_expense_payments").select("*").order("work_month", { ascending: false }), []),
   ]);
   const errs = [cats, svcs, offs, gal, settRes, bkgs].map((r) => r.error).filter(Boolean);
   if (errs.length) throw errs[0];
@@ -101,6 +104,8 @@ export async function fetchAdminData() {
     expenseCategories: expenseCategories ?? [],
     tipSplits: tipSplits ?? [],
     reviews: reviews ?? [],
+    fixedExpenses: fixedExpenses ?? [],
+    fixedExpensePayments: fixedExpensePayments ?? [],
   };
 }
 
@@ -1275,4 +1280,50 @@ export async function fetchStockTransfers(inventoryId = null) {
   if (error) throw error;
   return data ?? [];
 }
+
+// ─── Fixed Expenses CRUD ───────────────────────────────────────────────────────
+export async function saveFixedExpense(payload) {
+  const { id, ...rest } = payload;
+  if (id) {
+    const { data, error } = await t("fixed_expenses").update(rest).eq("id", id).select().single();
+    if (error) throw error;
+    return data;
+  } else {
+    const { data, error } = await t("fixed_expenses").insert(rest).select().single();
+    if (error) throw error;
+    return data;
+  }
+}
+
+export async function deleteFixedExpense(id) {
+  const { error } = await t("fixed_expenses").delete().eq("id", id);
+  if (error) throw error;
+}
+
+// ─── Fixed Expense Payments (monthly paid/unpaid tracking) ────────────────────
+export async function saveFixedExpensePayment(payload) {
+  // Upsert by fixed_expense_id + work_month
+  const { data, error } = await t("fixed_expense_payments")
+    .upsert(
+      {
+        fixed_expense_id: payload.fixed_expense_id,
+        work_month: payload.work_month,
+        status: payload.status,
+        paid_amount: payload.paid_amount ?? null,
+        paid_date: payload.paid_date ?? null,
+        notes: payload.notes ?? null,
+      },
+      { onConflict: "fixed_expense_id,work_month" }
+    )
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteFixedExpensePayment(id) {
+  const { error } = await t("fixed_expense_payments").delete().eq("id", id);
+  if (error) throw error;
+}
+
 
