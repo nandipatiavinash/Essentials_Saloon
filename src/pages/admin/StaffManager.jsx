@@ -21,7 +21,6 @@ export default function StaffManager() {
 
   // --- MODALS STATE ---
   const [staffModal, setStaffModal] = useState(null); // null | { name, role, phone, base_salary, upi_id, bank_account, joining_date, active }
-  const [advanceModal, setAdvanceModal] = useState(null); // null | { staff_id, amount, date, work_month, notes }
   const [payoutModal, setPayoutModal] = useState(null); // null | { paymentId, staffId, workMonth, netPayable, staffName, paymentMethod, notes, paymentDate }
   const [saving, setSaving] = useState(false);
 
@@ -203,45 +202,7 @@ export default function StaffManager() {
     });
   }, [selectedPerformanceStaff, invoices, perfFilterMode, perfMonth, perfStart, perfEnd]);
 
-  // ==========================================
-  // TAB 3: PAYROLL ACTIONS
-  // ==========================================
-  const handleSaveAdvance = async (e) => {
-    e.preventDefault();
-    setSaving(true);
-    try {
-      const selectedStaff = (staff || []).find(s => s.id === advanceModal.staff_id);
-      if (!selectedStaff) throw new Error("Select a staff member");
 
-      await saveStaffAdvance({
-        staff_id: advanceModal.staff_id,
-        staff_name: selectedStaff.name,
-        amount: Number(advanceModal.amount),
-        date: advanceModal.date,
-        work_month: advanceModal.work_month,
-        notes: advanceModal.notes
-      });
-
-      toast.success("Advance issued successfully!");
-      setAdvanceModal(null);
-      reload();
-    } catch (err) {
-      toast.error(err.message || "Failed to log advance");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleDeleteAdvance = async (id) => {
-    if (!window.confirm("Cancel and delete this advance record?")) return;
-    try {
-      await deleteStaffAdvance(id);
-      toast.success("Advance record deleted");
-      reload();
-    } catch (err) {
-      toast.error(err.message || "Failed to delete advance");
-    }
-  };
 
   const handleGenerateWorksheet = async () => {
     setSaving(true);
@@ -512,66 +473,11 @@ export default function StaffManager() {
                 </div>
               </div>
               <div style={{ display: "flex", gap: "0.5rem" }}>
-                <button className="tbl-btn" onClick={() => setAdvanceModal({ staff_id: "", amount: "", date: new Date().toISOString().slice(0, 10), work_month: payrollMonth, notes: "" })}>
-                  💸 Issue Advance Cash
-                </button>
                 <button className="btn-add" onClick={handleGenerateWorksheet} disabled={saving}>
                   {saving ? "Generating..." : "Generate Month Worksheet"}
                 </button>
               </div>
             </div>
-          </div>
-
-          {/* Advances Ledger for selected month */}
-          <div className="table-wrap" style={{ marginBottom: "1.5rem" }}>
-            <div className="table-header">
-              <div className="table-title" style={{ fontSize: "0.85rem" }}>Advances Cash Ledger for {formatMonthLabel(payrollMonth)}</div>
-            </div>
-            <table>
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Staff Member</th>
-                  <th>Advance Amount (₹)</th>
-                  <th>Work Month Deduct</th>
-                  <th>Status</th>
-                  <th>Notes</th>
-                  <th style={{ textAlign: "right" }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredAdvances.map(a => {
-                  const s = (staff || []).find(st => st.id === a.staff_id);
-                  const colors = { pending: "#f57c00", deducted: "#2e7d32", waived: "#777" };
-                  return (
-                    <tr key={a.id}>
-                      <td style={{ fontSize: "0.72rem" }}>{new Date(a.date).toLocaleDateString("en-IN")}</td>
-                      <td style={{ fontWeight: 600 }}>{s ? s.name : "Unknown staff"}</td>
-                      <td style={{ fontWeight: "bold" }}>Rs {Number(a.amount).toLocaleString("en-IN")}</td>
-                      <td>{formatMonthLabel(a.work_month)}</td>
-                      <td>
-                        <span className="badge" style={{ background: (colors[a.status] || "#888") + "15", color: colors[a.status] || "#888", border: "1px solid " + (colors[a.status] || "#888") + "40", padding: "2px 6px", fontSize: "0.6rem" }}>
-                          {a.status.toUpperCase()}
-                        </span>
-                      </td>
-                      <td style={{ fontSize: "0.72rem" }}>{a.notes || "—"}</td>
-                      <td style={{ textAlign: "right" }}>
-                        {a.status === "pending" && (
-                          <button className="tbl-btn danger" style={{ padding: "0.15rem 0.45rem", fontSize: "0.7rem" }} onClick={() => handleDeleteAdvance(a.id)}>Cancel</button>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-                {!filteredAdvances.length && (
-                  <tr>
-                    <td colSpan={7} style={{ textAlign: "center", padding: "1.5rem", color: "var(--a-muted)" }}>
-                      No advance cash payouts issued for this month.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
           </div>
 
           {/* Salary Payout Worksheet */}
@@ -585,11 +491,12 @@ export default function StaffManager() {
                   <th>Staff Name</th>
                   <th style={{ width: 110 }}>Base Salary (₹)</th>
                   <th style={{ width: 80, textAlign: "center" }}>Days Present</th>
-                  <th style={{ width: 110 }}>Tips Earned (₹)</th>
+                  <th style={{ width: 100 }}>Tips Earned (₹)</th>
                   <th style={{ width: 100 }}>Incentives (₹)</th>
-                  <th style={{ width: 110 }}>Deductions (₹)</th>
-                  <th style={{ textAlign: "right" }}>Net Payable</th>
-                  <th>Scheduled Pay</th>
+                  <th style={{ width: 110 }}>Advances (₹)</th>
+                  <th style={{ width: 120 }}>Other Deductions (₹)</th>
+                  <th style={{ width: 110, textAlign: "right" }}>Net Payable</th>
+                  <th style={{ width: 130 }}>Scheduled Pay</th>
                   <th>Notes</th>
                   <th>Status</th>
                   <th style={{ textAlign: "right" }}>Actions</th>
@@ -660,27 +567,35 @@ export default function StaffManager() {
                         />
                       </td>
                       <td>
-                        <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-                          <input
-                            type="number"
-                            min="0"
-                            className="form-input"
-                            style={{ padding: "0.2rem", fontSize: "0.78rem", width: "100%" }}
-                            value={p.other_deductions || 0}
-                            disabled={!unpaid}
-                            placeholder="Other ded."
-                            onChange={(e) => {
-                              const ded = Number(e.target.value) || 0;
-                              const net = Number(p.base_salary) + Number(p.tips_earned) + Number(p.incentives) - Number(p.advances_deducted) - ded;
-                              handleSavePaymentRow({ ...p, other_deductions: ded, net_payable: net });
-                            }}
-                          />
-                          {Number(p.advances_deducted || 0) > 0 && (
-                            <span style={{ fontSize: "0.6rem", color: "#b71c1c", fontWeight: "bold" }}>
-                              (Adv: ₹{p.advances_deducted})
-                            </span>
-                          )}
-                        </div>
+                        <input
+                          type="number"
+                          min="0"
+                          className="form-input"
+                          style={{ padding: "0.2rem", fontSize: "0.78rem", width: "100%" }}
+                          value={p.advances_deducted || 0}
+                          disabled={!unpaid}
+                          onChange={(e) => {
+                            const adv = Number(e.target.value) || 0;
+                            const net = Number(p.base_salary) + Number(p.tips_earned) + Number(p.incentives) - adv - Number(p.other_deductions || 0);
+                            handleSavePaymentRow({ ...p, advances_deducted: adv, net_payable: net });
+                          }}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="number"
+                          min="0"
+                          className="form-input"
+                          style={{ padding: "0.2rem", fontSize: "0.78rem", width: "100%" }}
+                          value={p.other_deductions || 0}
+                          disabled={!unpaid}
+                          placeholder="Other ded."
+                          onChange={(e) => {
+                            const ded = Number(e.target.value) || 0;
+                            const net = Number(p.base_salary) + Number(p.tips_earned) + Number(p.incentives) - Number(p.advances_deducted) - ded;
+                            handleSavePaymentRow({ ...p, other_deductions: ded, net_payable: net });
+                          }}
+                        />
                       </td>
                       <td style={{ textAlign: "right", fontWeight: "bold", fontSize: "0.85rem" }}>
                         Rs {Number(p.net_payable).toLocaleString("en-IN")}
@@ -808,56 +723,6 @@ export default function StaffManager() {
             <div className="modal-footer">
               <button type="button" className="tbl-btn" onClick={() => setStaffModal(null)}>Cancel</button>
               <button type="submit" form="staff-form" className="btn-add" disabled={saving}>{saving ? "Saving..." : "Save Employee"}</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Tab 3: Issue Advance Modal */}
-      {advanceModal && (
-        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setAdvanceModal(null)}>
-          <div className="modal">
-            <div className="modal-header">
-              <div className="modal-title">Log Cash Advance Payment</div>
-              <button className="modal-close" onClick={() => setAdvanceModal(null)}>✕</button>
-            </div>
-            <div className="modal-body">
-              <form id="advance-form" onSubmit={handleSaveAdvance}>
-                <div className="form-group">
-                  <label className="form-label">Employee *</label>
-                  <select className="form-input" value={advanceModal.staff_id} onChange={e => setAdvanceModal({ ...advanceModal, staff_id: e.target.value })} required>
-                    <option value="" disabled>-- Select Employee --</option>
-                    {(staff || []).filter(s => s.active).map(s => (
-                      <option key={s.id} value={s.id}>{s.name} (Base Salary: ₹{s.base_salary})</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="form-row">
-                  <div className="form-group">
-                    <label className="form-label">Advance Cash Amount (₹) *</label>
-                    <input type="number" min="1" className="form-input" value={advanceModal.amount} onChange={e => setAdvanceModal({ ...advanceModal, amount: e.target.value })} required />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Payout Date *</label>
-                    <input type="date" className="form-input" value={advanceModal.date} onChange={e => setAdvanceModal({ ...advanceModal, date: e.target.value })} required />
-                  </div>
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label">Deduct from work month *</label>
-                  <input type="month" className="form-input" value={advanceModal.work_month} onChange={e => setAdvanceModal({ ...advanceModal, work_month: e.target.value })} required />
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label">Reason / Notes</label>
-                  <textarea className="form-input" rows="2" value={advanceModal.notes || ""} onChange={e => setAdvanceModal({ ...advanceModal, notes: e.target.value })} placeholder="Details of emergency request..."></textarea>
-                </div>
-              </form>
-            </div>
-            <div className="modal-footer">
-              <button type="button" className="tbl-btn" onClick={() => setAdvanceModal(null)}>Cancel</button>
-              <button type="submit" form="advance-form" className="btn-add" disabled={saving}>{saving ? "Processing..." : "Issue Cash"}</button>
             </div>
           </div>
         </div>

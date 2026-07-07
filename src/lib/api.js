@@ -87,6 +87,16 @@ export async function fetchAdminData() {
   ]);
   const errs = [cats, svcs, offs, gal, settRes, bkgs].map((r) => r.error).filter(Boolean);
   if (errs.length) throw errs[0];
+  // Clean up orphaned staff advance expenses
+  const advIds = new Set((staffAdvances ?? []).map(a => a.id));
+  const orphanedExpenseIds = (expenses ?? [])
+    .filter(e => e.category === "Staff Advance" && e.is_system_entry && e.source_id && !advIds.has(e.source_id))
+    .map(e => e.id);
+  if (orphanedExpenseIds.length > 0) {
+    t("expenses").delete().in("id", orphanedExpenseIds).catch(console.error);
+  }
+  const cleanExpenses = (expenses ?? []).filter(e => !orphanedExpenseIds.includes(e.id));
+
   return {
     categories: cats.data ?? [],
     services: (svcs.data ?? []).map(norm),
@@ -105,7 +115,7 @@ export async function fetchAdminData() {
     attendanceActivityLogs: attendanceLogs ?? [],
     staffPayments: staffPayments ?? [],
     staffAdvances: staffAdvances ?? [],
-    expenses: expenses ?? [],
+    expenses: cleanExpenses,
     expenseCategories: expenseCategories ?? [],
     tipSplits: tipSplits ?? [],
     reviews: reviews ?? [],
@@ -1200,6 +1210,9 @@ export async function saveStaffAdvance(payload) {
 export async function deleteStaffAdvance(id) {
   const { error } = await t("staff_advances").delete().eq("id", id).eq("status", "pending");
   if (error) throw error;
+
+  // Delete the corresponding cash drawer payout expense entry
+  await t("expenses").delete().eq("source_id", id).eq("is_system_entry", true);
 }
 
 // ─── Expenses ─────────────────────────────────────────────────────────────────
