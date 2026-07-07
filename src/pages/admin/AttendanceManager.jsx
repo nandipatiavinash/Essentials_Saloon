@@ -300,26 +300,26 @@ export default function AttendanceManager() {
                     </select>
                   </td>
                   <td>
-                    <div style={{ display: "flex", gap: "0.25rem", alignItems: "center" }}>
+                    <div style={{ display: "flex", gap: "0.4rem", alignItems: "center" }}>
                       <TimePickerAMPM
                         disabled={!isPresent || saving}
                         value={log.check_in || "09:00"}
                         onChange={val => handleFieldChange(s.id, "check_in", val)}
                       />
-                      {isPresent && !log.check_in && (
-                        <button type="button" className="tbl-btn" onClick={() => logCheckIn(s.id)} style={{ padding: "0.2rem 0.4rem", fontSize: "0.6rem" }}>In</button>
+                      {isPresent && (
+                        <button type="button" className="tbl-btn" onClick={() => logCheckIn(s.id)} style={{ padding: "0.3rem 0.5rem", fontSize: "0.65rem", background: "rgba(201,185,154,0.15)", color: "#c9b99a", border: "1px solid #c9b99a", fontWeight: "bold" }}>In</button>
                       )}
                     </div>
                   </td>
                   <td>
-                    <div style={{ display: "flex", gap: "0.25rem", alignItems: "center" }}>
+                    <div style={{ display: "flex", gap: "0.4rem", alignItems: "center" }}>
                       <TimePickerAMPM
                         disabled={!isPresent || saving}
                         value={log.check_out || "21:00"}
                         onChange={val => handleFieldChange(s.id, "check_out", val)}
                       />
-                      {isPresent && log.check_in && !log.check_out && (
-                        <button type="button" className="tbl-btn" onClick={() => logCheckOut(s.id)} style={{ padding: "0.2rem 0.4rem", fontSize: "0.6rem" }}>Out</button>
+                      {isPresent && (
+                        <button type="button" className="tbl-btn" onClick={() => logCheckOut(s.id)} style={{ padding: "0.3rem 0.5rem", fontSize: "0.65rem", background: "rgba(0,0,0,0.05)", color: "#000", border: "1px solid #ccc", fontWeight: "bold" }}>Out</button>
                       )}
                     </div>
                   </td>

@@ -829,7 +829,6 @@ export async function saveAttendance(dateOrRows, rowsIfTwoArgs) {
   const fallbackDate = Array.isArray(dateOrRows) ? null : dateOrRows;
 
   const cleanRows = (actualRows || []).map(r => ({
-    id: r.id || undefined,
     staff_id: r.staff_id,
     date: r.date || fallbackDate,
     status: r.status,
