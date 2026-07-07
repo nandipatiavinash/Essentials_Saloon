@@ -38,17 +38,17 @@ export function formatBookingConfirmationMessage(form = {}, settings = {}) {
     ? new Date(form.date).toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" })
     : null;
   const time = form.time || null;
-  const slotLine = date ? `📅 *Date:* ${date}${time ? `  ⏰ *Time:* ${time}` : ""}` : null;
+  const slotLine = date ? `*Date:* ${date}${time ? `  *Time:* ${time}` : ""}` : null;
 
   const lines = [
     `*${salon.toUpperCase()}*`,
     ``,
-    `Hello *${firstName}* 👋,`,
+    `Hello *${firstName}*,`,
     ``,
     `Thank you for booking with us! We've received your appointment request.`,
     ``,
     `*Your Booking Details:*`,
-    `💇 *Service:* ${service}`,
+    `- Service: ${service}`,
     slotLine,
     ``,
     `Our team will confirm your appointment shortly. If you have any questions, feel free to reach out!`,
@@ -213,7 +213,7 @@ export function formatInvoiceMessage(invoice, items = [], settings = {}, reviewU
 
   // Review CTA — only included if reviewUrl is provided
   if (reviewUrl) {
-    msg.push(`⭐ *How was your experience?*`);
+    msg.push(`*How was your experience?*`);
     msg.push(`Your feedback means the world to us!`);
     msg.push(`Rate your visit (takes 10 seconds):`);
     msg.push(reviewUrl);

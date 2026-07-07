@@ -227,11 +227,6 @@ export default function ReviewPage() {
                     <li key={idx}>{item.service_name}</li>
                   ))}
                 </ul>
-                {displayStylist && (
-                  <div style={{ fontSize: "0.75rem", color: "#666", marginTop: "0.6rem", borderTop: "1px dashed #e8e2d5", paddingTop: "0.4rem" }}>
-                    Stylist: <strong>{displayStylist}</strong>
-                  </div>
-                )}
               </div>
             )}
 
