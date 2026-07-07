@@ -8,8 +8,9 @@ export default function ReviewPage() {
 
   const [loading, setLoading] = useState(true);
   const [invoice, setInvoice] = useState(null);
-  const [errorMsg, setErrorMsg] = useState("");
   
+  const [guestName, setGuestName] = useState("");
+  const [guestMobile, setGuestMobile] = useState("");
   const [rating, setRating] = useState(0);
   const [hoverRating, setHoverRating] = useState(0);
   const [comment, setComment] = useState("");
@@ -18,7 +19,7 @@ export default function ReviewPage() {
 
   useEffect(() => {
     if (!token) {
-      setErrorMsg("Invalid review link. Please check your SMS/WhatsApp message.");
+      setInvoice(null);
       setLoading(false);
       return;
     }
@@ -26,14 +27,14 @@ export default function ReviewPage() {
     fetchInvoiceByReviewToken(token)
       .then((data) => {
         if (!data) {
-          setErrorMsg("Review link has expired or is invalid.");
+          setInvoice(null);
         } else {
           setInvoice(data);
         }
       })
       .catch((err) => {
         console.error("Error loading invoice review data", err);
-        setErrorMsg("Failed to load invoice details. Please refresh the page.");
+        setInvoice(null);
       })
       .finally(() => setLoading(false));
   }, [token]);
@@ -44,25 +45,39 @@ export default function ReviewPage() {
       alert("Please select a star rating first!");
       return;
     }
+    if (!invoice && !guestName.trim()) {
+      alert("Please enter your name!");
+      return;
+    }
     setSubmitting(true);
     try {
-      const services = (invoice.invoice_items || []).map(i => i.service_name);
-      await submitReview({
-        invoice_id: invoice.id,
-        invoice_number: invoice.invoice_number,
-        customer_id: invoice.customer_id,
-        client_name: invoice.client_name,
-        mobile: invoice.mobile,
-        rating,
-        comment,
-        staff_name: invoice.staff_name,
-        service_names: services,
-        review_token: token
-      });
+      if (invoice) {
+        const services = (invoice.invoice_items || []).map(i => i.service_name);
+        await submitReview({
+          invoice_id: invoice.id,
+          invoice_number: invoice.invoice_number,
+          customer_id: invoice.customer_id,
+          client_name: invoice.client_name,
+          mobile: invoice.mobile,
+          rating,
+          comment,
+          staff_name: invoice.staff_name,
+          service_names: services,
+          review_token: token
+        });
+      } else {
+        await submitReview({
+          client_name: guestName.trim(),
+          mobile: guestMobile.trim() || null,
+          rating,
+          comment,
+          review_token: token || null
+        });
+      }
       setSubmitted(true);
     } catch (err) {
       if (err.message?.includes("unique") || err.code === "23505") {
-        setSubmitted(true); // Treat duplicate submission as successful thank-you state
+        setSubmitted(true);
       } else {
         alert("Failed to submit review: " + err.message);
       }
@@ -79,17 +94,6 @@ export default function ReviewPage() {
     );
   }
 
-  if (errorMsg) {
-    return (
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", background: "#faf7f2", padding: "1rem", fontFamily: "sans-serif" }}>
-        <div style={{ background: "#fff", padding: "2rem", borderRadius: "16px", boxShadow: "0 4px 20px rgba(0,0,0,0.06)", maxWidth: "420px", width: "100%", textAlign: "center" }}>
-          <div style={{ fontSize: "3rem", marginBottom: "1rem" }}>⚠️</div>
-          <h3 style={{ margin: "0 0 0.5rem", color: "#1a1a1a" }}>Link Error</h3>
-          <p style={{ color: "#666", fontSize: "0.9rem", lineHeight: "1.4", margin: 0 }}>{errorMsg}</p>
-        </div>
-      </div>
-    );
-  }
 
   const clientFirstName = (invoice?.client_name || "Guest").split(" ")[0];
   const visitDate = invoice?.billing_at
@@ -109,12 +113,11 @@ export default function ReviewPage() {
             Toni & Guy hairdressing · Gorantla
           </span>
         </div>
-
         {submitted ? (
           <div style={{ textAlign: "center", padding: "1rem 0" }}>
             <div style={{ fontSize: "3rem", marginBottom: "1rem", color: "#c9a84c" }}>⭐</div>
             <h3 style={{ margin: "0 0 0.5rem", color: "#1a1a1a", fontSize: "1.25rem" }}>
-              Thank You, {clientFirstName}!
+              Thank You, {invoice ? clientFirstName : guestName || "Guest"}!
             </h3>
             <p style={{ color: "#666", fontSize: "0.88rem", lineHeight: "1.5", marginBottom: "1.5rem" }}>
               Your rating of {rating} star{rating !== 1 ? "s" : ""} has been saved. We appreciate you taking the time to share your feedback!
@@ -132,33 +135,89 @@ export default function ReviewPage() {
           </div>
         ) : (
           <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
-            <div>
-              <h3 style={{ margin: "0 0 0.25rem", color: "#1a1a1a", fontSize: "1.1rem" }}>
-                Hi {clientFirstName} 👋
-              </h3>
-              <p style={{ margin: 0, color: "#666", fontSize: "0.88rem", lineHeight: "1.4" }}>
-                How was your service experience at our salon on {visitDate}?
-              </p>
-            </div>
-
-            {/* Service details summary */}
-            <div style={{ background: "#faf8f5", padding: "1rem", borderRadius: "8px", border: "1px solid #f0eae0" }}>
-              <div style={{ fontSize: "0.72rem", color: "#999", fontWeight: "bold", textTransform: "uppercase", marginBottom: "0.4rem" }}>
-                Services received
+            {invoice ? (
+              <div>
+                <h3 style={{ margin: "0 0 0.25rem", color: "#1a1a1a", fontSize: "1.1rem" }}>
+                  Hi {clientFirstName} 👋
+                </h3>
+                <p style={{ margin: 0, color: "#666", fontSize: "0.88rem", lineHeight: "1.4" }}>
+                  How was your service experience at our salon on {visitDate}?
+                </p>
               </div>
-              <ul style={{ margin: 0, paddingLeft: "1.2rem", fontSize: "0.82rem", color: "#444", lineHeight: "1.5" }}>
-                {(invoice.invoice_items || []).filter(i => i.item_type !== "product").map((item, idx) => (
-                  <li key={idx}>{item.service_name}</li>
-                ))}
-              </ul>
-              {invoice.staff_name && (
-                <div style={{ fontSize: "0.75rem", color: "#666", marginTop: "0.6rem", borderTop: "1px dashed #e8e2d5", paddingTop: "0.4rem" }}>
-                  Stylist: <strong>{invoice.staff_name}</strong>
+            ) : (
+              <div>
+                <h3 style={{ margin: "0 0 0.25rem", color: "#1a1a1a", fontSize: "1.1rem" }}>
+                  We'd Love Your Feedback!
+                </h3>
+                <p style={{ margin: 0, color: "#666", fontSize: "0.88rem", lineHeight: "1.4" }}>
+                  Please share your salon experience with us.
+                </p>
+              </div>
+            )}
+
+            {!invoice && (
+              <div style={{ display: "flex", flexDirection: "column", gap: "1rem", background: "#faf8f5", padding: "1rem", borderRadius: "8px", border: "1px solid #f0eae0" }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.3rem" }}>
+                  <label style={{ fontSize: "0.72rem", color: "#999", fontWeight: "bold", textTransform: "uppercase" }}>
+                    Your Full Name *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={guestName}
+                    onChange={e => setGuestName(e.target.value)}
+                    placeholder="e.g. John Doe"
+                    style={{
+                      padding: "0.6rem",
+                      borderRadius: "6px",
+                      border: "1px solid #ccc",
+                      fontSize: "0.85rem",
+                      outline: "none"
+                    }}
+                  />
                 </div>
-              )}
-            </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.3rem" }}>
+                  <label style={{ fontSize: "0.72rem", color: "#999", fontWeight: "bold", textTransform: "uppercase" }}>
+                    Your Mobile Number (Optional)
+                  </label>
+                  <input
+                    type="tel"
+                    value={guestMobile}
+                    onChange={e => setGuestMobile(e.target.value)}
+                    placeholder="e.g. 9876543210"
+                    style={{
+                      padding: "0.6rem",
+                      borderRadius: "6px",
+                      border: "1px solid #ccc",
+                      fontSize: "0.85rem",
+                      outline: "none"
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {invoice && (
+              /* Service details summary */
+              <div style={{ background: "#faf8f5", padding: "1rem", borderRadius: "8px", border: "1px solid #f0eae0" }}>
+                <div style={{ fontSize: "0.72rem", color: "#999", fontWeight: "bold", textTransform: "uppercase", marginBottom: "0.4rem" }}>
+                  Services received
+                </div>
+                <ul style={{ margin: 0, paddingLeft: "1.2rem", fontSize: "0.82rem", color: "#444", lineHeight: "1.5" }}>
+                  {(invoice.invoice_items || []).filter(i => i.item_type !== "product").map((item, idx) => (
+                    <li key={idx}>{item.service_name}</li>
+                  ))}
+                </ul>
+                {invoice.staff_name && (
+                  <div style={{ fontSize: "0.75rem", color: "#666", marginTop: "0.6rem", borderTop: "1px dashed #e8e2d5", paddingTop: "0.4rem" }}>
+                    Stylist: <strong>{invoice.staff_name}</strong>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Interactive Stars */}
+
             <div style={{ textAlign: "center", margin: "0.5rem 0" }}>
               <div style={{ fontSize: "0.75rem", color: "#888", fontWeight: "bold", textTransform: "uppercase", marginBottom: "0.5rem" }}>
                 Tap to rate

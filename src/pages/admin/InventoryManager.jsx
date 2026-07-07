@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Search, Plus, Trash2, AlertTriangle, Package, DollarSign, Layers, ArrowLeftRight } from "lucide-react";
+import { Search, Plus, Trash2, AlertTriangle, Package, DollarSign, Layers, ArrowLeftRight, Download } from "lucide-react";
 import { useAdmin } from "../../layouts/AdminLayout";
 import { createInventoryItem, updateInventoryItem, deleteInventoryItem, fetchStockTransfers, saveStockTransfer } from "../../lib/api";
 import toast from "react-hot-toast";

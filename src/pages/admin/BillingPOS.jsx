@@ -48,6 +48,8 @@ export default function BillingPOS() {
   const [attemptedSubmit, setAttemptedSubmit] = useState(false);
   const [addTab, setAddTab] = useState("services");
   const [viewInvoiceData, setViewInvoiceData] = useState(null);
+  const [customItemModal, setCustomItemModal] = useState(null); // null | { item_type, name, price, quantity, staff_name }
+
 
 
   const activeServices = useMemo(() => (services || []).filter((svc) => svc.active), [services]);
@@ -252,6 +254,41 @@ export default function BillingPOS() {
       };
     });
   };
+
+  const handleAddCustomItem = (e) => {
+    e.preventDefault();
+    if (!customItemModal.name) {
+      toast.error("Please enter a name for the custom item");
+      return;
+    }
+    const price = Number(customItemModal.price);
+    if (isNaN(price) || price < 0) {
+      toast.error("Please enter a valid price");
+      return;
+    }
+    const qty = Number(customItemModal.quantity || 1);
+
+    setBill((current) => {
+      const newItem = {
+        item_type: customItemModal.item_type,
+        service_id: null,
+        inventory_id: null,
+        service_name: customItemModal.name,
+        quantity: qty,
+        price,
+        tax_inclusive: true,
+        staff_name: customItemModal.staff_name || current.staff_name || "",
+      };
+      return {
+        ...current,
+        items: [...current.items, newItem]
+      };
+    });
+
+    toast.success(`Custom ${customItemModal.item_type} added!`);
+    setCustomItemModal(null);
+  };
+
 
   const updateItem = (index, patch) => {
     setBill((current) => ({
@@ -754,10 +791,16 @@ export default function BillingPOS() {
           </div>
 
           <div className="pos-section">
-            <div style={{ display: "flex", gap: "0.5rem", marginBottom: "0.75rem" }}>
-              <button type="button" className={`tbl-btn${addTab === "services" ? " active" : ""}`} onClick={() => setAddTab("services")}>✂️ Services</button>
-              <button type="button" className={`tbl-btn${addTab === "products" ? " active" : ""}`} onClick={() => setAddTab("products")}>📦 Products ({activeInventory.length} in stock)</button>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.75rem", flexWrap: "wrap", gap: "0.5rem" }}>
+              <div style={{ display: "flex", gap: "0.5rem" }}>
+                <button type="button" className={`tbl-btn${addTab === "services" ? " active" : ""}`} onClick={() => setAddTab("services")}>✂️ Services</button>
+                <button type="button" className={`tbl-btn${addTab === "products" ? " active" : ""}`} onClick={() => setAddTab("products")}>📦 Products ({activeInventory.length} in stock)</button>
+              </div>
+              <button type="button" className="btn-add" disabled={billSaved} onClick={() => setCustomItemModal({ item_type: "service", name: "", price: "", quantity: 1, staff_name: bill.staff_name || "" })} style={{ fontSize: "0.72rem", padding: "0.4rem 0.8rem" }}>
+                ✨ Add Custom Item
+              </button>
             </div>
+
 
             {addTab === "services" && (
               <div className="service-picker" style={{ width: "100%", display: "block" }}>
@@ -1218,16 +1261,31 @@ export default function BillingPOS() {
               <button 
                 type="button" 
                 className="tbl-btn" 
-                onClick={() => {
+                onClick={async () => {
                   const appBase = window.location.origin;
-                  const reviewUrl = viewInvoiceData.invoice.review_token
-                    ? `${appBase}/review?token=${viewInvoiceData.invoice.review_token}`
-                    : `${appBase}/review`;
-                  const invData = { ...viewInvoiceData.invoice, is_member: !!viewInvoiceData.invoice.customer?.is_member };
-                  const url = buildWhatsAppLink(viewInvoiceData.invoice.mobile, formatInvoiceMessage(invData, viewInvoiceData.items, settings, reviewUrl));
-                  window.open(url, "_blank", "noopener,noreferrer");
+                  let token = viewInvoiceData.invoice.review_token;
+                  
+                  // Open a blank tab synchronously to prevent popup blocker
+                  const newWindow = window.open("", "_blank");
+                  
+                  try {
+                    if (!token) {
+                      token = await generateAndSaveReviewToken(viewInvoiceData.invoice.id);
+                      viewInvoiceData.invoice.review_token = token;
+                    }
+                    const reviewUrl = token ? `${appBase}/review?token=${token}` : `${appBase}/review`;
+                    const invData = { ...viewInvoiceData.invoice, is_member: !!viewInvoiceData.invoice.customer?.is_member };
+                    const url = buildWhatsAppLink(viewInvoiceData.invoice.mobile, formatInvoiceMessage(invData, viewInvoiceData.items, settings, reviewUrl));
+                    
+                    if (newWindow) {
+                      newWindow.location.href = url;
+                    }
+                  } catch (err) {
+                    console.error("Failed to share WhatsApp review link", err);
+                    if (newWindow) newWindow.close();
+                    toast.error("Failed to generate unique review link.");
+                  }
                 }}
-
               >
                 Share WhatsApp
               </button>
@@ -1241,6 +1299,86 @@ export default function BillingPOS() {
               <button type="button" className="btn-add" onClick={() => setViewInvoiceData(null)}>
                 Close
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Custom Item Modal */}
+      {customItemModal && (
+        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setCustomItemModal(null)}>
+          <div className="modal" style={{ maxWidth: "450px" }}>
+            <div className="modal-header">
+              <div className="modal-title">Add Custom Non-Existing Item</div>
+              <button className="modal-close" onClick={() => setCustomItemModal(null)}>✕</button>
+            </div>
+            <div className="modal-body">
+              <form id="custom-item-form" onSubmit={handleAddCustomItem}>
+                <div className="form-group" style={{ marginBottom: "1rem" }}>
+                  <label className="form-label">Item Type *</label>
+                  <select 
+                    className="form-input" 
+                    value={customItemModal.item_type} 
+                    onChange={e => setCustomItemModal({ ...customItemModal, item_type: e.target.value })}
+                    required
+                  >
+                    <option value="service">✂️ Service (e.g. Special Haircut)</option>
+                    <option value="product">📦 Retail Product (e.g. Specific Shampoo)</option>
+                  </select>
+                </div>
+
+                <div className="form-group" style={{ marginBottom: "1rem" }}>
+                  <label className="form-label">Name / Description *</label>
+                  <input 
+                    type="text" 
+                    className="form-input" 
+                    value={customItemModal.name} 
+                    onChange={e => setCustomItemModal({ ...customItemModal, name: e.target.value })} 
+                    placeholder="Enter custom service or product name" 
+                    required 
+                  />
+                </div>
+
+                <div className="form-row" style={{ marginBottom: "1rem" }}>
+                  <div className="form-group">
+                    <label className="form-label">Price (₹) *</label>
+                    <input 
+                      type="number" 
+                      min="0" 
+                      className="form-input" 
+                      value={customItemModal.price} 
+                      onChange={e => setCustomItemModal({ ...customItemModal, price: e.target.value })} 
+                      placeholder="e.g. 500" 
+                      required 
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Quantity</label>
+                    <input 
+                      type="number" 
+                      min="1" 
+                      className="form-input" 
+                      value={customItemModal.quantity} 
+                      onChange={e => setCustomItemModal({ ...customItemModal, quantity: Number(e.target.value) || 1 })} 
+                      required 
+                    />
+                  </div>
+                </div>
+
+                <div className="form-group" style={{ marginBottom: "0.5rem" }}>
+                  <label className="form-label">Staff Served</label>
+                  <SearchableStaffDropdown 
+                    staffList={presentStaff} 
+                    value={customItemModal.staff_name} 
+                    onChange={(val) => setCustomItemModal({ ...customItemModal, staff_name: val })} 
+                    placeholder="Select Staff" 
+                  />
+                </div>
+              </form>
+            </div>
+            <div className="modal-footer">
+              <button type="button" className="tbl-btn" onClick={() => setCustomItemModal(null)}>Cancel</button>
+              <button type="submit" form="custom-item-form" className="btn-add">Add to Bill</button>
             </div>
           </div>
         </div>

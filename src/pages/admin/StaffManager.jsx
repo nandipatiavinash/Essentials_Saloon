@@ -621,13 +621,14 @@ export default function StaffManager() {
               <thead>
                 <tr>
                   <th>Staff Name</th>
-                  <th>Base Salary (₹)</th>
-                  <th style={{ textAlign: "center" }}>Days Present</th>
-                  <th style={{ textAlign: "right" }}>Tips Earned</th>
+                  <th style={{ width: 110 }}>Base Salary (₹)</th>
+                  <th style={{ width: 80, textAlign: "center" }}>Days Present</th>
+                  <th style={{ width: 110 }}>Tips Earned (₹)</th>
                   <th style={{ width: 100 }}>Incentives (₹)</th>
-                  <th style={{ textAlign: "right" }}>Deductions</th>
+                  <th style={{ width: 110 }}>Deductions (₹)</th>
                   <th style={{ textAlign: "right" }}>Net Payable</th>
                   <th>Scheduled Pay</th>
+                  <th>Notes</th>
                   <th>Status</th>
                   <th style={{ textAlign: "right" }}>Actions</th>
                 </tr>
@@ -638,14 +639,55 @@ export default function StaffManager() {
                   return (
                     <tr key={p.id}>
                       <td style={{ fontWeight: 600 }}>{p.staffName}</td>
-                      <td>Rs {Number(p.base_salary).toLocaleString("en-IN")}</td>
-                      <td style={{ textAlign: "center" }}>{p.days_present || 0}</td>
-                      <td style={{ textAlign: "right", color: "var(--gold)" }}>Rs {Number(p.tips_earned || 0).toLocaleString("en-IN")}</td>
+                      <td>
+                        <input
+                          type="number"
+                          min="0"
+                          className="form-input"
+                          style={{ padding: "0.2rem", fontSize: "0.78rem", width: "100%" }}
+                          value={p.base_salary}
+                          disabled={!unpaid}
+                          onChange={(e) => {
+                            const base = Number(e.target.value) || 0;
+                            const net = base + Number(p.tips_earned) + Number(p.incentives) - Number(p.advances_deducted) - Number(p.other_deductions);
+                            handleSavePaymentRow({ ...p, base_salary: base, net_payable: net });
+                          }}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="number"
+                          min="0"
+                          className="form-input"
+                          style={{ padding: "0.2rem", fontSize: "0.78rem", width: "100%", textAlign: "center" }}
+                          value={p.days_present || 0}
+                          disabled={!unpaid}
+                          onChange={(e) => {
+                            const dp = Number(e.target.value) || 0;
+                            handleSavePaymentRow({ ...p, days_present: dp });
+                          }}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="number"
+                          min="0"
+                          className="form-input"
+                          style={{ padding: "0.2rem", fontSize: "0.78rem", width: "100%" }}
+                          value={p.tips_earned || 0}
+                          disabled={!unpaid}
+                          onChange={(e) => {
+                            const tips = Number(e.target.value) || 0;
+                            const net = Number(p.base_salary) + tips + Number(p.incentives) - Number(p.advances_deducted) - Number(p.other_deductions);
+                            handleSavePaymentRow({ ...p, tips_earned: tips, net_payable: net });
+                          }}
+                        />
+                      </td>
                       <td>
                         <input
                           type="number"
                           className="form-input"
-                          style={{ padding: "0.2rem", fontSize: "0.78rem" }}
+                          style={{ padding: "0.2rem", fontSize: "0.78rem", width: "100%" }}
                           value={p.incentives}
                           disabled={!unpaid}
                           onChange={(e) => {
@@ -655,8 +697,28 @@ export default function StaffManager() {
                           }}
                         />
                       </td>
-                      <td style={{ textAlign: "right", color: "#b71c1c" }}>
-                        Rs {Number(p.advances_deducted || 0).toLocaleString("en-IN")}
+                      <td>
+                        <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                          <input
+                            type="number"
+                            min="0"
+                            className="form-input"
+                            style={{ padding: "0.2rem", fontSize: "0.78rem", width: "100%" }}
+                            value={p.other_deductions || 0}
+                            disabled={!unpaid}
+                            placeholder="Other ded."
+                            onChange={(e) => {
+                              const ded = Number(e.target.value) || 0;
+                              const net = Number(p.base_salary) + Number(p.tips_earned) + Number(p.incentives) - Number(p.advances_deducted) - ded;
+                              handleSavePaymentRow({ ...p, other_deductions: ded, net_payable: net });
+                            }}
+                          />
+                          {Number(p.advances_deducted || 0) > 0 && (
+                            <span style={{ fontSize: "0.6rem", color: "#b71c1c", fontWeight: "bold" }}>
+                              (Adv: ₹{p.advances_deducted})
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td style={{ textAlign: "right", fontWeight: "bold", fontSize: "0.85rem" }}>
                         Rs {Number(p.net_payable).toLocaleString("en-IN")}
@@ -674,13 +736,26 @@ export default function StaffManager() {
                         />
                       </td>
                       <td>
+                        <input
+                          type="text"
+                          className="form-input"
+                          style={{ padding: "0.2rem", fontSize: "0.75rem", width: 120 }}
+                          value={p.notes || ""}
+                          disabled={!unpaid}
+                          placeholder="Add notes..."
+                          onChange={(e) => {
+                            handleSavePaymentRow({ ...p, notes: e.target.value });
+                          }}
+                        />
+                      </td>
+                      <td>
                         <span className="badge" style={{ background: unpaid ? "rgba(183,28,28,0.08)" : "rgba(46,125,50,0.08)", color: unpaid ? "#b71c1c" : "#2e7d32", padding: "2px 6px" }}>
                           {p.status.toUpperCase()}
                         </span>
                       </td>
                       <td style={{ textAlign: "right" }}>
                         {unpaid ? (
-                          <button className="btn-add" style={{ padding: "0.25rem 0.6rem", fontSize: "0.7rem", background: "#2e7d32" }} onClick={() => setPayoutModal({ paymentId: p.id, staffId: p.staff_id, workMonth: p.work_month, netPayable: p.net_payable, staffName: p.staffName, paymentMethod: "Cash", notes: "", paymentDate: new Date().toISOString().slice(0, 10) })}>
+                          <button className="btn-add" style={{ padding: "0.25rem 0.6rem", fontSize: "0.7rem", background: "#2e7d32" }} onClick={() => setPayoutModal({ paymentId: p.id, staffId: p.staff_id, workMonth: p.work_month, netPayable: p.net_payable, staffName: p.staffName, paymentMethod: "Cash", notes: p.notes, paymentDate: new Date().toISOString().slice(0, 10) })}>
                             Mark Paid
                           </button>
                         ) : (

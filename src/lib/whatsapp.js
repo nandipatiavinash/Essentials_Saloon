@@ -32,7 +32,7 @@ export function buildWhatsAppLink(phone, message) {
  */
 export function formatBookingConfirmationMessage(form = {}, settings = {}) {
   const salon = settings.name || "Toni & Guy Essensuals Gorantla";
-  const firstName = (form.name || "Valued Guest").split(" ")[0];
+  const firstName = (form.name || "Valued Guest").trim();
   const service = form.service || "your requested service";
   const date = form.date
     ? new Date(form.date).toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" })
@@ -134,7 +134,7 @@ export function formatInvoiceMessage(invoice, items = [], settings = {}, reviewU
   const mapsLink = "https://share.google/APJl5CWwP49v7jOCc";
   const instaLink = "https://www.instagram.com/toniandguy_essensual_gorantla/";
 
-  const clientFirstName = (invoice.client_name || "Valued Client").split(" ")[0];
+  const clientFirstName = (invoice.client_name || "Valued Client").trim();
 
   // Always use billing_at from the saved invoice (IST from server)
   const visitDate = invoice.billing_at
