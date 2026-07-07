@@ -54,8 +54,11 @@ export default function StaffManager() {
   const adjustMonth = (ym, delta) => {
     const [y, m] = ym.split("-").map(Number);
     const date = new Date(y, m - 1 + delta, 1);
-    return date.toISOString().slice(0, 7);
+    const newY = date.getFullYear();
+    const newM = String(date.getMonth() + 1).padStart(2, "0");
+    return `${newY}-${newM}`;
   };
+
 
   // ==========================================
   // TAB 1: DIRECTORY ACTIONS
@@ -426,15 +429,16 @@ export default function StaffManager() {
               <div className="table-title">Performance Analytics</div>
               <div className="table-actions" style={{ display: "flex", gap: "0.5rem" }}>
                 <div style={{ display: "flex", background: "rgba(0,0,0,0.03)", padding: "2px", borderRadius: "4px" }}>
-                  <button className={`tbl-btn ${perfFilterMode === "month" ? "active" : ""}`} onClick={() => setPerfFilterMode("month")} style={{ padding: "0.25rem 0.5rem", fontSize: "0.7rem" }}>Month</button>
-                  <button className={`tbl-btn ${perfFilterMode === "range" ? "active" : ""}`} onClick={() => setPerfFilterMode("range")} style={{ padding: "0.25rem 0.5rem", fontSize: "0.7rem" }}>Custom Range</button>
+                  <button type="button" className={`tbl-btn ${perfFilterMode === "month" ? "active" : ""}`} onClick={() => setPerfFilterMode("month")} style={{ padding: "0.25rem 0.5rem", fontSize: "0.7rem" }}>Month</button>
+                  <button type="button" className={`tbl-btn ${perfFilterMode === "range" ? "active" : ""}`} onClick={() => setPerfFilterMode("range")} style={{ padding: "0.25rem 0.5rem", fontSize: "0.7rem" }}>Custom Range</button>
                 </div>
                 {perfFilterMode === "month" ? (
                   <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                    <button className="tbl-btn" onClick={() => setPerfMonth(adjustMonth(perfMonth, -1))}><ChevronLeft size={14} /></button>
+                    <button type="button" className="tbl-btn" onClick={() => setPerfMonth(adjustMonth(perfMonth, -1))}><ChevronLeft size={14} /></button>
                     <span style={{ fontSize: "0.82rem", fontWeight: "bold", minWidth: 100, textAlign: "center" }}>{formatMonthLabel(perfMonth)}</span>
-                    <button className="tbl-btn" onClick={() => setPerfMonth(adjustMonth(perfMonth, 1))}><ChevronRight size={14} /></button>
+                    <button type="button" className="tbl-btn" onClick={() => setPerfMonth(adjustMonth(perfMonth, 1))}><ChevronRight size={14} /></button>
                   </div>
+
                 ) : (
                   <div style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>
                     <input type="date" className="form-input" value={perfStart} onChange={e => setPerfStart(e.target.value)} style={{ padding: "0.25rem", width: 110, fontSize: "0.75rem" }} />
