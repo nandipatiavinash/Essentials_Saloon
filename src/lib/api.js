@@ -918,6 +918,22 @@ export async function closeCashRegister(id, closingCash, notes) {
   return row;
 }
 
+export async function reopenCashRegister(id) {
+  const { data: row, error } = await t("cash_register")
+    .update({
+      status: "open",
+      closed_at: null,
+      closing_cash: null,
+      notes: null,
+      updated_at: new Date().toISOString()
+    })
+    .eq("id", id)
+    .select()
+    .single();
+  if (error) throw error;
+  return row;
+}
+
 // ─── Customer Membership Update ──────────────────────────────────────────────
 export async function updateCustomerMembership(customerId, details) {
   const { data: row, error } = await t("customers")

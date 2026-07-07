@@ -6,6 +6,7 @@ import {
   openCashRegister, 
   updateCashRegisterExpenses, 
   closeCashRegister, 
+  reopenCashRegister,
   sendEodEmailReport, 
   saveExpense, 
   deleteExpense, 
@@ -211,6 +212,25 @@ export default function FinanceManager() {
       setSaving(false);
     }
   };
+
+  const handleReopenRegister = async () => {
+    if (!isTodayOrYesterday(regDate)) {
+      toast.error("Registers can only be reopened or managed for today or yesterday.");
+      return;
+    }
+    if (!window.confirm("Are you sure you want to re-open this cash register?")) return;
+    setSaving(true);
+    try {
+      await reopenCashRegister(activeRegister.id);
+      toast.success("Cash register reopened successfully!");
+      reload();
+    } catch (err) {
+      toast.error(err.message || "Failed to reopen register");
+    } finally {
+      setSaving(false);
+    }
+  };
+
 
 
   const handleSendEodEmail = async () => {
@@ -727,6 +747,16 @@ Report generated: ${new Date().toLocaleString("en-IN")}
                         Notes: {activeRegister.notes}
                       </div>
                     )}
+                    <button 
+                      type="button" 
+                      className="tbl-btn" 
+                      style={{ marginTop: "1rem", width: "100%", border: "1px solid #2e7d32", color: "#2e7d32", background: "none", fontWeight: "bold" }}
+                      disabled={saving}
+                      onClick={handleReopenRegister}
+                    >
+                      🔓 Re-open Register
+                    </button>
+
                   </div>
                 )}
               </div>
