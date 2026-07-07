@@ -76,15 +76,21 @@ export default function FinanceManager() {
     };
   }, [invoices, regDate]);
 
+  const dailyCashExpensesList = useMemo(() => {
+    return (expenses || []).filter(e => e.date === regDate && e.payment_method === "Cash");
+  }, [expenses, regDate]);
+
   const expectedCash = useMemo(() => {
     if (!activeRegister) return 0;
-    return Number(activeRegister.opening_cash || 0) + Number(salesForDate.cash) - Number(activeRegister.expenses || 0);
-  }, [activeRegister, salesForDate]);
+    const totalCashExpenses = dailyCashExpensesList.reduce((sum, e) => sum + Number(e.amount || 0), 0);
+    return Number(activeRegister.opening_cash || 0) + Number(salesForDate.cash) - totalCashExpenses;
+  }, [activeRegister, salesForDate, dailyCashExpensesList]);
 
   const expenseItems = useMemo(() => {
     if (!activeRegister?.expense_notes) return [];
     return activeRegister.expense_notes.split(/\s*\|\s*/).filter(Boolean);
   }, [activeRegister?.expense_notes]);
+
 
   const parseExpense = (item) => {
     const match = item.match(/(.*?)\s*\(Rs\s*(\d+(?:\.\d+)?)\)/i);
@@ -208,17 +214,20 @@ Payment Methods:
       invoicesTableText += `-----------------------------------------------------------------------\n`;
 
       // 2. Compile Cash Registry Reconciliation
+      const totalCashExpenses = dailyCashExpensesList.reduce((sum, e) => sum + Number(e.amount || 0), 0);
+      const cashExpensesNotes = dailyCashExpensesList.map(e => `${e.description} (${e.category}): Rs ${e.amount}`).join(" | ") || "None";
       const registerText = `
 CASH DRAWER RECONCILIATION
 ---------------------------------------------
 Opening Cash:    Rs ${Number(activeRegister.opening_cash).toLocaleString("en-IN")}
-Cash Expenses:   Rs ${Number(activeRegister.expenses).toLocaleString("en-IN")}
-  - Notes:       ${activeRegister.expense_notes || "None"}
+Cash Expenses:   Rs ${totalCashExpenses.toLocaleString("en-IN")}
+  - Notes:       ${cashExpensesNotes}
 Expected Cash:   Rs ${expectedCash.toLocaleString("en-IN")}
 Actual Cash:     ${activeRegister.status === "closed" ? "Rs " + Number(activeRegister.closing_cash).toLocaleString("en-IN") : "Drawer Still Open"}
 Discrepancy:     ${activeRegister.status === "closed" ? "Rs " + (Number(activeRegister.closing_cash) - expectedCash).toLocaleString("en-IN") : "N/A"}
 Drawer Notes:    ${activeRegister.notes || "None"}
 `;
+
 
       const emailTextBody = `
 =======================================================================
@@ -536,7 +545,7 @@ Report generated: ${new Date().toLocaleString("en-IN")}
                   </div>
                   <div style={{ border: "1px solid #e8e8e4", padding: "1rem" }}>
                     <div style={{ fontSize: "0.58rem", textTransform: "uppercase", color: "#999", letterSpacing: "0.1em" }}>Daily Expenses Payout</div>
-                    <div style={{ fontSize: "1.2rem", fontWeight: "bold", color: "#b71c1c" }}>- Rs {Number(activeRegister.expenses || 0).toLocaleString("en-IN")}</div>
+                    <div style={{ fontSize: "1.2rem", fontWeight: "bold", color: "#b71c1c" }}>- Rs {dailyCashExpensesList.reduce((sum, e) => sum + Number(e.amount || 0), 0).toLocaleString("en-IN")}</div>
                   </div>
                   <div style={{ border: "1px solid #e8e8e4", padding: "1rem", background: "rgba(201,185,154,0.05)" }}>
                     <div style={{ fontSize: "0.58rem", textTransform: "uppercase", color: "var(--a-muted)", letterSpacing: "0.1em", fontWeight: "600" }}>Expected Cash In Register</div>
@@ -544,24 +553,25 @@ Report generated: ${new Date().toLocaleString("en-IN")}
                   </div>
                 </div>
 
-                {expenseItems.length > 0 && (
+                {dailyCashExpensesList.length > 0 && (
                   <div style={{ marginBottom: "2rem" }}>
-                    <div style={{ fontSize: "0.58rem", textTransform: "uppercase", color: "#999", fontWeight: "bold", marginBottom: "0.5rem" }}>Daily Expense logs</div>
+                    <div style={{ fontSize: "0.58rem", textTransform: "uppercase", color: "#999", fontWeight: "bold", marginBottom: "0.5rem" }}>Daily Cash Expense logs</div>
                     <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                      {expenseItems.map((item, idx) => {
-                        const { desc, amount } = parseExpense(item);
-                        return (
-                          <div key={idx} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#fff", border: "1px solid #e8e8e4", padding: "1rem", borderRadius: "4px", borderLeft: "4px solid #b71c1c" }}>
-                            <span style={{ fontSize: "0.82rem", fontWeight: 600, color: "#333" }}>{desc}</span>
-                            <span style={{ fontSize: "1.2rem", fontWeight: "bold", color: "#b71c1c" }}>
-                              {amount !== null ? `₹${amount.toLocaleString("en-IN")}` : item}
-                            </span>
+                      {dailyCashExpensesList.map((item) => (
+                        <div key={item.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#fff", border: "1px solid #e8e8e4", padding: "1rem", borderRadius: "4px", borderLeft: "4px solid #b71c1c" }}>
+                          <div>
+                            <span style={{ fontSize: "0.82rem", fontWeight: 600, color: "#333" }}>{item.description}</span>
+                            <div style={{ fontSize: "0.65rem", color: "var(--a-muted)" }}>Category: {item.category}</div>
                           </div>
-                        );
-                      })}
+                          <span style={{ fontSize: "1.2rem", fontWeight: "bold", color: "#b71c1c" }}>
+                            ₹{Number(item.amount || 0).toLocaleString("en-IN")}
+                          </span>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 )}
+
 
                 {activeRegister.status === "open" ? (
                   <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: "2rem" }}>
