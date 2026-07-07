@@ -32,13 +32,13 @@ export default function StaffProfile() {
 
   const invoicesForStaff = useMemo(() => {
     if (!member) return [];
-    return (invoices || []).filter(inv =>
-      inv.status !== "void" && 
-      isInPeriod(inv.billing_at) && (
-        inv.staff_name === member.name ||
-        (inv.invoice_items || []).some(item => item.staff_name === member.name)
-      )
-    );
+    const mName = member.name.trim().toLowerCase();
+    return (invoices || []).filter(inv => {
+      if (inv.status === "void" || !isInPeriod(inv.billing_at)) return false;
+      const hasMain = inv.staff_name && inv.staff_name.trim().toLowerCase() === mName;
+      const hasLine = (inv.invoice_items || []).some(item => item.staff_name && item.staff_name.trim().toLowerCase() === mName);
+      return hasMain || hasLine;
+    });
   }, [invoices, member, filterMode, selectedMonth, startDate, endDate]);
 
   const attendanceForStaff = useMemo(() => {
@@ -50,13 +50,14 @@ export default function StaffProfile() {
 
   const kpis = useMemo(() => {
     if (!member) return {};
+    const mName = member.name.trim().toLowerCase();
     let netSales = 0;
     let servicesCount = 0;
     const clientSet = new Set();
     
     // Compute tips from tipSplits for this stylist in this period
     const stylistTips = (tipSplits || []).filter(ts => 
-      ts.staff_name === member.name && 
+      ts.staff_name && ts.staff_name.trim().toLowerCase() === mName && 
       invoicesForStaff.some(inv => inv.id === ts.invoice_id)
     );
     const tipsEarned = stylistTips.reduce((sum, ts) => sum + Number(ts.tip_amount || 0), 0);
@@ -64,7 +65,8 @@ export default function StaffProfile() {
     invoicesForStaff.forEach(inv => {
       clientSet.add(inv.customer_id || inv.mobile);
       (inv.invoice_items || []).forEach(item => {
-        const staffMatch = item.staff_name === member.name || (!item.staff_name && inv.staff_name === member.name);
+        const itemStaff = item.staff_name || inv.staff_name;
+        const staffMatch = itemStaff && itemStaff.trim().toLowerCase() === mName;
         if (staffMatch && item.item_type !== "membership") {
           netSales += Number(item.total || 0);
           servicesCount += Number(item.quantity || 1);
@@ -91,7 +93,8 @@ export default function StaffProfile() {
     const svcMap = {};
     invoicesForStaff.forEach(inv => {
       (inv.invoice_items || []).forEach(item => {
-        const staffMatch = item.staff_name === member.name || (!item.staff_name && inv.staff_name === member.name);
+        const itemStaff = item.staff_name || inv.staff_name;
+        const staffMatch = itemStaff && itemStaff.trim().toLowerCase() === mName;
         if (staffMatch && item.item_type !== "membership") {
           svcMap[item.service_name] = (svcMap[item.service_name] || 0) + Number(item.quantity || 1);
         }
@@ -108,7 +111,8 @@ export default function StaffProfile() {
       const month = (inv.billing_at || inv.created_at || "").slice(0, 7);
       if (!month) return;
       (inv.invoice_items || []).forEach(item => {
-        const staffMatch = item.staff_name === member.name || (!item.staff_name && inv.staff_name === member.name);
+        const itemStaff = item.staff_name || inv.staff_name;
+        const staffMatch = itemStaff && itemStaff.trim().toLowerCase() === mName;
         if (staffMatch && item.item_type !== "membership") byMonth[month] = (byMonth[month] || 0) + Number(item.total || 0);
       });
     });
@@ -127,6 +131,7 @@ export default function StaffProfile() {
       monthlyTrend,
     };
   }, [invoicesForStaff, attendanceForStaff, member]);
+
 
   if (!member) {
     return (
@@ -296,9 +301,10 @@ export default function StaffProfile() {
           <tbody>
             {invoicesForStaff.slice(0, 100).map(inv => {
               const netAmt = Number(inv.subtotal || 0) - Number(inv.discount || 0);
-              const staffItems = (inv.invoice_items || []).filter(item =>
-                item.staff_name === member.name || (!item.staff_name && inv.staff_name === member.name)
-              );
+              const staffItems = (inv.invoice_items || []).filter(item => {
+                const itemStaff = item.staff_name || inv.staff_name;
+                return itemStaff && itemStaff.trim().toLowerCase() === member.name.trim().toLowerCase();
+              });
               return (
                 <tr key={inv.id}>
                   <td style={{ fontSize: "0.72rem", color: "var(--a-muted)" }}>

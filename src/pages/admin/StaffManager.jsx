@@ -459,12 +459,11 @@ export default function StaffManager() {
                   <th style={{ textAlign: "center" }}>Unique Clients</th>
                   <th style={{ textAlign: "right" }}>Net Sales Volume</th>
                   <th style={{ textAlign: "right" }}>Tips Earned</th>
-                  <th style={{ textAlign: "right" }}>Action</th>
                 </tr>
               </thead>
               <tbody>
                 {performanceData.map(s => (
-                  <tr key={s.id} style={{ cursor: "pointer" }} onClick={() => setSelectedPerformanceStaff(s)}>
+                  <tr key={s.id} style={{ cursor: "pointer" }} onClick={() => navigate(`/staff/${s.id}`)}>
                     <td style={{ fontWeight: 600 }}>{s.name}</td>
                     <td>{s.role}</td>
                     <td style={{ textAlign: "center", fontWeight: "bold" }}>{s.presentCount}</td>
@@ -473,61 +472,11 @@ export default function StaffManager() {
                     <td style={{ textAlign: "center" }}>{s.uniqueClients}</td>
                     <td style={{ textAlign: "right", fontWeight: "bold" }}>Rs {s.netSales.toLocaleString("en-IN")}</td>
                     <td style={{ textAlign: "right", color: s.totalTips > 0 ? "var(--gold)" : "inherit" }}>Rs {s.totalTips.toLocaleString("en-IN")}</td>
-                    <td style={{ textAlign: "right" }}>
-                      <button className="tbl-btn" onClick={(e) => { e.stopPropagation(); setSelectedPerformanceStaff(s); }}>
-                        Show Bills
-                      </button>
-                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-
-          {/* Sub-table: Bills served by selected stylist */}
-          {selectedPerformanceStaff && (
-            <div className="table-wrap" style={{ marginTop: "1.5rem" }}>
-              <div className="table-header" style={{ background: "#faf8f5" }}>
-                <div className="table-title" style={{ fontSize: "0.85rem", color: "#1a1a1a" }}>
-                  🧾 Billing records for <strong>{selectedPerformanceStaff.name}</strong> ({staffPerformanceInvoices.length} bills)
-                </div>
-                <button className="tbl-btn" onClick={() => setSelectedPerformanceStaff(null)}><X size={14} /></button>
-              </div>
-              <div style={{ maxHeight: "300px", overflowY: "auto" }}>
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Date</th>
-                      <th>Invoice No.</th>
-                      <th>Client Name</th>
-                      <th>Services Provided</th>
-                      <th style={{ textAlign: "right" }}>Total Bill</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {staffPerformanceInvoices.map(inv => (
-                      <tr key={inv.id}>
-                        <td style={{ fontSize: "0.72rem" }}>{new Date(inv.billing_at).toLocaleDateString("en-IN")}</td>
-                        <td style={{ fontWeight: 600, fontSize: "0.75rem" }}>{inv.invoice_number}</td>
-                        <td>{inv.client_name}</td>
-                        <td style={{ fontSize: "0.72rem" }}>
-                          {(inv.invoice_items || []).map(i => i.service_name).join(", ")}
-                        </td>
-                        <td style={{ textAlign: "right", fontWeight: "bold" }}>Rs {Number(inv.total).toLocaleString("en-IN")}</td>
-                      </tr>
-                    ))}
-                    {!staffPerformanceInvoices.length && (
-                      <tr>
-                        <td colSpan={5} style={{ textAlign: "center", padding: "2rem", color: "#999" }}>
-                          No transactions found for this period.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
         </>
       )}
 
