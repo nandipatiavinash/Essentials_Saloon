@@ -1,5 +1,5 @@
-import { useMemo } from "react";
-import { ArrowLeft, TrendingUp, Users, Scissors, Clock, Award, Calendar, DollarSign } from "lucide-react";
+import { useMemo, useState } from "react";
+import { ArrowLeft, TrendingUp, Users, Scissors, Clock, Award, Calendar, DollarSign, ChevronLeft, ChevronRight } from "lucide-react";
 import { useAdmin } from "../../layouts/AdminLayout";
 import { format12HourTime } from "../../lib/api";
 import { useNavigate, useParams } from "react-router-dom";
@@ -11,22 +11,42 @@ export default function StaffProfile() {
 
   const member = useMemo(() => (staff || []).find(s => String(s.id) === String(id)), [staff, id]);
 
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const [filterMode, setFilterMode] = useState("month"); // month | range
+  const [selectedMonth, setSelectedMonth] = useState(() => todayStr.slice(0, 7));
+  const [startDate, setStartDate] = useState(() => {
+    const d = new Date();
+    return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10);
+  });
+  const [endDate, setEndDate] = useState(todayStr);
+
+  const isInPeriod = (dateStr) => {
+    if (!dateStr) return false;
+    const d = dateStr.slice(0, 10);
+    if (filterMode === "month") {
+      return d.slice(0, 7) === selectedMonth;
+    } else {
+      return d >= startDate && d <= endDate;
+    }
+  };
+
   const invoicesForStaff = useMemo(() => {
     if (!member) return [];
     return (invoices || []).filter(inv =>
-      inv.status !== "void" && (
+      inv.status !== "void" && 
+      isInPeriod(inv.billing_at) && (
         inv.staff_name === member.name ||
         (inv.invoice_items || []).some(item => item.staff_name === member.name)
       )
     );
-  }, [invoices, member]);
+  }, [invoices, member, filterMode, selectedMonth, startDate, endDate]);
 
   const attendanceForStaff = useMemo(() => {
     if (!member) return [];
     return (attendance || [])
-      .filter(a => a.staff_id === member.id)
+      .filter(a => a.staff_id === member.id && isInPeriod(a.date))
       .sort((a, b) => b.date.localeCompare(a.date));
-  }, [attendance, member]);
+  }, [attendance, member, filterMode, selectedMonth, startDate, endDate]);
 
   const kpis = useMemo(() => {
     if (!member) return {};
@@ -34,8 +54,11 @@ export default function StaffProfile() {
     let servicesCount = 0;
     const clientSet = new Set();
     
-    // Compute tips from tipSplits for this stylist
-    const stylistTips = (tipSplits || []).filter(ts => ts.staff_name === member.name);
+    // Compute tips from tipSplits for this stylist in this period
+    const stylistTips = (tipSplits || []).filter(ts => 
+      ts.staff_name === member.name && 
+      invoicesForStaff.some(inv => inv.id === ts.invoice_id)
+    );
     const tipsEarned = stylistTips.reduce((sum, ts) => sum + Number(ts.tip_amount || 0), 0);
 
     invoicesForStaff.forEach(inv => {
@@ -48,6 +71,7 @@ export default function StaffProfile() {
         }
       });
     });
+
 
 
     const daysPresent = attendanceForStaff.filter(a => a.status === "present" || a.status === "late").length;
@@ -138,12 +162,48 @@ export default function StaffProfile() {
         </div>
       </div>
 
+      {/* Date Filter Bar */}
+      <div className="pos-panel" style={{ padding: "1rem 1.5rem", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "1rem" }}>
+        <div style={{ fontSize: "0.85rem", fontWeight: "bold", color: "var(--a-text)" }}>
+          📅 Filter by Date
+        </div>
+        <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+          <div style={{ display: "flex", background: "rgba(0,0,0,0.03)", padding: "2px", borderRadius: "4px" }}>
+            <button type="button" className={`tbl-btn ${filterMode === "month" ? "active" : ""}`} onClick={() => setFilterMode("month")} style={{ padding: "0.25rem 0.5rem", fontSize: "0.7rem" }}>Month</button>
+            <button type="button" className={`tbl-btn ${filterMode === "range" ? "active" : ""}`} onClick={() => setFilterMode("range")} style={{ padding: "0.25rem 0.5rem", fontSize: "0.7rem" }}>Custom Range</button>
+          </div>
+          {filterMode === "month" ? (
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              <button type="button" className="tbl-btn" style={{ padding: "0.25rem" }} onClick={() => {
+                const [y, m] = selectedMonth.split("-").map(Number);
+                const prev = new Date(y, m - 2, 1).toISOString().slice(0, 7);
+                setSelectedMonth(prev);
+              }}><ChevronLeft size={14} /></button>
+              <span style={{ fontSize: "0.82rem", fontWeight: "bold", minWidth: 100, textAlign: "center" }}>
+                {new Date(Number(selectedMonth.split("-")[0]), Number(selectedMonth.split("-")[1]) - 1, 1).toLocaleDateString("en-IN", { month: "long", year: "numeric" })}
+              </span>
+              <button type="button" className="tbl-btn" style={{ padding: "0.25rem" }} onClick={() => {
+                const [y, m] = selectedMonth.split("-").map(Number);
+                const next = new Date(y, m, 1).toISOString().slice(0, 7);
+                setSelectedMonth(next);
+              }}><ChevronRight size={14} /></button>
+            </div>
+          ) : (
+            <div style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>
+              <input type="date" className="form-input" value={startDate} onChange={e => setStartDate(e.target.value)} style={{ padding: "0.25rem", width: 110, fontSize: "0.75rem" }} />
+              <span style={{ color: "#aaa", fontSize: "0.75rem" }}>to</span>
+              <input type="date" className="form-input" value={endDate} onChange={e => setEndDate(e.target.value)} style={{ padding: "0.25rem", width: 110, fontSize: "0.75rem" }} />
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* KPI Cards */}
       <div className="stats-grid">
         <div className="stat-card">
           <div className="stat-label">Total Net Sales</div>
           <div className="stat-value" style={{ color: "var(--a-text)" }}>Rs {(kpis.netSales || 0).toLocaleString("en-IN")}</div>
-          <div className="stat-sub">All time revenue generated</div>
+          <div className="stat-sub">Revenue in selected period</div>
         </div>
         <div className="stat-card">
           <div className="stat-label">Services Done</div>
