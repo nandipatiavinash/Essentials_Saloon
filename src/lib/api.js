@@ -844,9 +844,9 @@ export async function saveAttendance(dateOrRows, rowsIfTwoArgs) {
 
 export async function createAttendanceLog(log) {
   const { data, error } = await t("attendance_logs").insert({
-    staff_id: log.staff_id,
+    staff_id: log.staff_id || null,
     date: log.date || new Date().toISOString().slice(0, 10),
-    action_type: log.action_type,
+    action_type: log.action_type || "manual",
     details: log.details,
     timestamp: new Date().toISOString()
   }).select();

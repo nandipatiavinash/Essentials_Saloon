@@ -109,7 +109,9 @@ export default function AttendanceManager() {
       }]);
       if (logMessage) {
         await createAttendanceLog({
+          staff_id: staffId,
           date,
+          action_type: "manual",
           details: logMessage
         });
       }
@@ -154,6 +156,7 @@ export default function AttendanceManager() {
       // Auto-log activity trail
       await createAttendanceLog({
         date,
+        action_type: "manual",
         details: `Daily attendance logs saved for ${date}. Total Present: ${records.filter(r => r.status === "present" || r.status === "late").length}/${records.length}`
       });
 
@@ -197,7 +200,9 @@ export default function AttendanceManager() {
       }]);
       
       await createAttendanceLog({
+        staff_id: adjustModal.staff_id,
         date,
+        action_type: "adjustment",
         details: `Adjusted check-in/out times for ${adjustModal.staff_name} on ${date}.`
       });
 
@@ -229,7 +234,9 @@ export default function AttendanceManager() {
         notes: current.notes || null
       }]);
       await createAttendanceLog({
+        staff_id: staffId,
         date,
+        action_type: "check_in",
         details: `${staffName} checked in at ${format12HourTime(nowTime)}`
       });
       toast.success("Checked in!");
@@ -253,7 +260,9 @@ export default function AttendanceManager() {
         notes: current.notes || null
       }]);
       await createAttendanceLog({
+        staff_id: staffId,
         date,
+        action_type: "check_out",
         details: `${staffName} checked out at ${format12HourTime(nowTime)}`
       });
       toast.success("Checked out!");
