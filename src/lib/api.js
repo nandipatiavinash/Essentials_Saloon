@@ -92,7 +92,9 @@ export async function fetchAdminData() {
     .filter(e => e.category === "Staff Advance" && e.is_system_entry && e.source_id && !advIds.has(e.source_id))
     .map(e => e.id);
   if (orphanedExpenseIds.length > 0) {
-    t("expenses").delete().in("id", orphanedExpenseIds).catch(console.error);
+    t("expenses").delete().in("id", orphanedExpenseIds).then(({ error }) => {
+      if (error) console.error("Orphaned expenses cleanup failed:", error.message);
+    });
   }
   const cleanExpenses = (expenses ?? []).filter(e => !orphanedExpenseIds.includes(e.id));
 
