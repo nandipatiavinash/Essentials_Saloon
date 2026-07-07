@@ -1083,7 +1083,7 @@ export async function generateAndSaveReviewToken(invoiceId) {
 
 export async function fetchInvoiceByReviewToken(token) {
   const { data, error } = await t("invoices")
-    .select("id, invoice_number, client_name, mobile, staff_name, review_token, review_sent, billing_at, invoice_items(service_name, item_type)")
+    .select("id, invoice_number, customer_id, client_name, mobile, staff_name, review_token, review_sent, billing_at, invoice_items(service_name, item_type, staff_name)")
     .eq("review_token", token)
     .maybeSingle();
   if (error) throw error;
@@ -1091,7 +1091,7 @@ export async function fetchInvoiceByReviewToken(token) {
 }
 
 export async function submitReview(payload) {
-  const { data, error } = await t("reviews").insert({
+  const { error } = await t("reviews").insert({
     invoice_id: payload.invoice_id || null,
     invoice_number: payload.invoice_number || null,
     customer_id: payload.customer_id || null,
@@ -1103,9 +1103,9 @@ export async function submitReview(payload) {
     service_names: payload.service_names || null,
     review_token: payload.review_token || null,
     reviewed_at: new Date().toISOString(),
-  }).select().single();
+  });
   if (error) throw error;
-  return data;
+  return true;
 }
 
 // ─── Staff Payments (Payroll) ─────────────────────────────────────────────────

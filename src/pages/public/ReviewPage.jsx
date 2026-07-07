@@ -4,7 +4,8 @@ import { fetchInvoiceByReviewToken, submitReview } from "../../lib/api";
 
 export default function ReviewPage() {
   const [searchParams] = useSearchParams();
-  const token = searchParams.get("token");
+  const rawToken = searchParams.get("token");
+  const token = rawToken ? rawToken.trim() : null;
 
   const [loading, setLoading] = useState(true);
   const [invoice, setInvoice] = useState(null);
@@ -53,6 +54,15 @@ export default function ReviewPage() {
     try {
       if (invoice) {
         const services = (invoice.invoice_items || []).map(i => i.service_name);
+        const uniqueItemStylists = [
+          ...new Set(
+            (invoice.invoice_items || [])
+              .map(i => i.staff_name)
+              .filter(Boolean)
+          )
+        ];
+        const displayStylist = invoice.staff_name || uniqueItemStylists.join(", ");
+
         await submitReview({
           invoice_id: invoice.id,
           invoice_number: invoice.invoice_number,
@@ -61,7 +71,7 @@ export default function ReviewPage() {
           mobile: invoice.mobile,
           rating,
           comment,
-          staff_name: invoice.staff_name,
+          staff_name: displayStylist || null,
           service_names: services,
           review_token: token
         });
@@ -99,6 +109,15 @@ export default function ReviewPage() {
   const visitDate = invoice?.billing_at
     ? new Date(invoice.billing_at).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })
     : "";
+
+  const uniqueItemStylists = [
+    ...new Set(
+      (invoice?.invoice_items || [])
+        .map(i => i.staff_name)
+        .filter(Boolean)
+    )
+  ];
+  const displayStylist = invoice?.staff_name || uniqueItemStylists.join(", ");
 
   return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", background: "#faf7f2", padding: "1.5rem", fontFamily: "sans-serif" }}>
@@ -208,9 +227,9 @@ export default function ReviewPage() {
                     <li key={idx}>{item.service_name}</li>
                   ))}
                 </ul>
-                {invoice.staff_name && (
+                {displayStylist && (
                   <div style={{ fontSize: "0.75rem", color: "#666", marginTop: "0.6rem", borderTop: "1px dashed #e8e2d5", paddingTop: "0.4rem" }}>
-                    Stylist: <strong>{invoice.staff_name}</strong>
+                    Stylist: <strong>{displayStylist}</strong>
                   </div>
                 )}
               </div>
