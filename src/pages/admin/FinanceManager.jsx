@@ -465,7 +465,15 @@ Report generated: ${new Date().toLocaleString("en-IN")}
     const monthExpenses = (expenses || []).filter(e => 
       (e.date || "").slice(0, 7) === plMonth
     );
-    const totalExpenses = monthExpenses.reduce((sum, e) => sum + Number(e.amount || 0), 0);
+    const ledgerSum = monthExpenses.reduce((sum, e) => sum + Number(e.amount || 0), 0);
+
+    const legacyRegSum = (cashRegister || []).filter(reg => {
+      if ((reg.date || "").slice(0, 7) !== plMonth) return false;
+      const hasSync = (expenses || []).some(e => e.date === reg.date && e.description && e.description.startsWith("Register Payout:"));
+      return !hasSync;
+    }).reduce((sum, reg) => sum + Number(reg.expenses || 0), 0);
+
+    const totalExpenses = ledgerSum + legacyRegSum;
 
     // 3. Profit Margin
     const netProfit = revenue - totalExpenses;
@@ -485,9 +493,11 @@ Report generated: ${new Date().toLocaleString("en-IN")}
       netProfit,
       margin,
       fixedCosts,
-      monthExpenses
+      monthExpenses,
+      legacyRegSum
     };
-  }, [invoices, expenses, expenseCategories, plMonth]);
+  }, [invoices, expenses, cashRegister, expenseCategories, plMonth]);
+
 
   // Group monthly expenses by category for pie/donut table
   const plCategoryBreakdown = useMemo(() => {
@@ -495,6 +505,10 @@ Report generated: ${new Date().toLocaleString("en-IN")}
     plStats.monthExpenses.forEach(e => {
       groups[e.category] = (groups[e.category] || 0) + Number(e.amount || 0);
     });
+
+    if (plStats.legacyRegSum && plStats.legacyRegSum > 0) {
+      groups["Other"] = (groups["Other"] || 0) + plStats.legacyRegSum;
+    }
 
     const categoriesMap = {};
     (expenseCategories || []).forEach(c => {
@@ -511,7 +525,8 @@ Report generated: ${new Date().toLocaleString("en-IN")}
         pct: plStats.totalExpenses > 0 ? ((amt / plStats.totalExpenses) * 100).toFixed(1) : "0.0"
       };
     }).sort((a, b) => b.amount - a.amount);
-  }, [plStats.monthExpenses, plStats.totalExpenses, expenseCategories]);
+  }, [plStats.monthExpenses, plStats.totalExpenses, plStats.legacyRegSum, expenseCategories]);
+
 
   // Monthly Revenue vs Expenses Trend (div bars)
   const monthlyTrends = useMemo(() => {
@@ -529,14 +544,25 @@ Report generated: ${new Date().toLocaleString("en-IN")}
         .reduce((sum, inv) => sum + Number(inv.total || 0), 0);
         
       // Calc exp
-      const exp = (expenses || [])
+      const ledgerExp = (expenses || [])
         .filter(e => (e.date || "").slice(0, 7) === key)
         .reduce((sum, e) => sum + Number(e.amount || 0), 0);
+
+      const legacyRegExp = (cashRegister || [])
+        .filter(reg => (reg.date || "").slice(0, 7) === key)
+        .filter(reg => {
+          const hasSync = (expenses || []).some(e => e.date === reg.date && e.description && e.description.startsWith("Register Payout:"));
+          return !hasSync;
+        })
+        .reduce((sum, reg) => sum + Number(reg.expenses || 0), 0);
+
+      const exp = ledgerExp + legacyRegExp;
 
       trendList.push({ key, label, revenue: rev, expenses: exp, net: rev - exp });
     }
     return trendList;
-  }, [invoices, expenses]);
+  }, [invoices, expenses, cashRegister]);
+
 
   const maxTrendValue = useMemo(() => {
     let max = 10000;

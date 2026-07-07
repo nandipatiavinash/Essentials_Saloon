@@ -1219,10 +1219,15 @@ export default function BillingPOS() {
                 type="button" 
                 className="tbl-btn" 
                 onClick={() => {
+                  const appBase = window.location.origin;
+                  const reviewUrl = viewInvoiceData.invoice.review_token
+                    ? `${appBase}/review?token=${viewInvoiceData.invoice.review_token}`
+                    : `${appBase}/review`;
                   const invData = { ...viewInvoiceData.invoice, is_member: !!viewInvoiceData.invoice.customer?.is_member };
-                  const url = buildWhatsAppLink(viewInvoiceData.invoice.mobile, formatInvoiceMessage(invData, viewInvoiceData.items, settings));
+                  const url = buildWhatsAppLink(viewInvoiceData.invoice.mobile, formatInvoiceMessage(invData, viewInvoiceData.items, settings, reviewUrl));
                   window.open(url, "_blank", "noopener,noreferrer");
                 }}
+
               >
                 Share WhatsApp
               </button>
