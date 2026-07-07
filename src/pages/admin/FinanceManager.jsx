@@ -39,6 +39,7 @@ export default function FinanceManager() {
   const [cashRegisterExpenseStaffId, setCashRegisterExpenseStaffId] = useState("");
   
   const [editingExpense, setEditingExpense] = useState(null); // null | expense
+  const [editingRegisterExpense, setEditingRegisterExpense] = useState(null); // null | expense
 
   const isTodayOrYesterday = (dateStr) => {
     if (!dateStr) return false;
@@ -209,6 +210,67 @@ export default function FinanceManager() {
       reload();
     } catch (err) {
       toast.error(err.message || "Failed to log expense");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleRegisterExpenseDelete = async (item) => {
+    if (!window.confirm("Delete this daily cash payout expense?")) return;
+    try {
+      await deleteExpense(item.id);
+      
+      // Update cash register expenses sum and notes for this date
+      const remaining = dailyCashExpensesList.filter(e => e.id !== item.id);
+      const newSum = remaining.reduce((acc, e) => acc + Number(e.amount || 0), 0);
+      const newNotes = remaining.map(e => {
+        const label = e.category === "Staff Advance" ? "Staff Advance" : e.category;
+        const cleanDesc = e.description ? e.description.replace("Register Payout: ", "") : "Payout";
+        return `${label}: ${cleanDesc} (Rs ${e.amount})`;
+      }).join(" | ");
+      
+      await updateCashRegisterExpenses(activeRegister.id, newSum, newNotes);
+      toast.success("Payout deleted successfully!");
+      reload();
+    } catch (err) {
+      toast.error(err.message || "Failed to delete payout");
+    }
+  };
+
+  const handleRegisterExpenseEditSave = async (e) => {
+    e.preventDefault();
+    if (!editingRegisterExpense.amount || Number(editingRegisterExpense.amount) <= 0) {
+      toast.error("Enter a valid amount");
+      return;
+    }
+    setSaving(true);
+    try {
+      await saveExpense({
+        id: editingRegisterExpense.id,
+        category: editingRegisterExpense.category,
+        description: editingRegisterExpense.description,
+        amount: Number(editingRegisterExpense.amount),
+        date: editingRegisterExpense.date,
+        payment_method: editingRegisterExpense.payment_method
+      });
+      
+      // Update cash register
+      const updatedList = dailyCashExpensesList.map(item => 
+        item.id === editingRegisterExpense.id ? editingRegisterExpense : item
+      );
+      const newSum = updatedList.reduce((acc, e) => acc + Number(e.amount || 0), 0);
+      const newNotes = updatedList.map(e => {
+        const label = e.category === "Staff Advance" ? "Staff Advance" : e.category;
+        const cleanDesc = e.description ? e.description.replace("Register Payout: ", "") : "Payout";
+        return `${label}: ${cleanDesc} (Rs ${e.amount})`;
+      }).join(" | ");
+      
+      await updateCashRegisterExpenses(activeRegister.id, newSum, newNotes);
+      toast.success("Payout updated successfully!");
+      setEditingRegisterExpense(null);
+      reload();
+    } catch (err) {
+      toast.error(err.message || "Failed to update payout");
     } finally {
       setSaving(false);
     }
@@ -621,14 +683,24 @@ Report generated: ${new Date().toLocaleString("en-IN")}
                     <div style={{ fontSize: "0.58rem", textTransform: "uppercase", color: "#999", fontWeight: "bold", marginBottom: "0.5rem" }}>Daily Cash Expense logs</div>
                     <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
                       {dailyCashExpensesList.map((item) => (
-                        <div key={item.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#fff", border: "1px solid #e8e8e4", padding: "1rem", borderRadius: "4px", borderLeft: "4px solid #b71c1c" }}>
+                        <div key={item.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#fff", border: "1px solid #e8e8e4", padding: "0.75rem 1rem", borderRadius: "4px", borderLeft: "4px solid #b71c1c" }}>
                           <div>
                             <span style={{ fontSize: "0.82rem", fontWeight: 600, color: "#333" }}>{item.description}</span>
                             <div style={{ fontSize: "0.65rem", color: "var(--a-muted)" }}>Category: {item.category}</div>
                           </div>
-                          <span style={{ fontSize: "1.2rem", fontWeight: "bold", color: "#b71c1c" }}>
-                            ₹{Number(item.amount || 0).toLocaleString("en-IN")}
-                          </span>
+                          <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+                            <span style={{ fontSize: "1.1rem", fontWeight: "bold", color: "#b71c1c" }}>
+                              ₹{Number(item.amount || 0).toLocaleString("en-IN")}
+                            </span>
+                            {!item.is_system_entry ? (
+                              <div style={{ display: "flex", gap: "0.25rem" }}>
+                                <button type="button" className="tbl-btn" style={{ padding: "0.15rem 0.45rem", fontSize: "0.7rem" }} onClick={() => setEditingRegisterExpense(item)}>Edit</button>
+                                <button type="button" className="tbl-btn danger" style={{ padding: "0.15rem 0.45rem", fontSize: "0.7rem", background: "#b71c1c" }} onClick={() => handleRegisterExpenseDelete(item)}>Delete</button>
+                              </div>
+                            ) : (
+                              <span style={{ fontSize: "0.6rem", color: "var(--a-muted)", background: "rgba(0,0,0,0.03)", padding: "2px 6px", borderRadius: "2px", fontWeight: "bold" }}>SYSTEM</span>
+                            )}
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -1134,6 +1206,67 @@ Report generated: ${new Date().toLocaleString("en-IN")}
             </div>
           </div>
         </>
+      )}
+      {/* Edit Register Expense Modal */}
+      {editingRegisterExpense && (
+        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setEditingRegisterExpense(null)}>
+          <div className="modal" style={{ maxWidth: "420px" }}>
+            <div className="modal-header">
+              <div className="modal-title">Edit Cash Drawer Payout</div>
+              <button className="modal-close" onClick={() => setEditingRegisterExpense(null)}>✕</button>
+            </div>
+            <div className="modal-body">
+              <form id="edit-reg-expense-form" onSubmit={handleRegisterExpenseEditSave}>
+                <div className="form-group" style={{ marginBottom: "1rem" }}>
+                  <label className="form-label">Expense Category *</label>
+                  <select 
+                    className="form-input" 
+                    value={editingRegisterExpense.category} 
+                    onChange={e => setEditingRegisterExpense({ ...editingRegisterExpense, category: e.target.value })} 
+                    required
+                  >
+                    <option value="Rent">Rent</option>
+                    <option value="Electricity">Electricity</option>
+                    <option value="Water">Water</option>
+                    <option value="Staff Payout">Staff Payout</option>
+                    <option value="Refreshments">Refreshments</option>
+                    <option value="Laundry">Laundry</option>
+                    <option value="Maintenance">Maintenance</option>
+                    <option value="Insurance">Insurance</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+                <div className="form-group" style={{ marginBottom: "1rem" }}>
+                  <label className="form-label">Description / Note *</label>
+                  <input 
+                    className="form-input" 
+                    value={editingRegisterExpense.description} 
+                    onChange={e => setEditingRegisterExpense({ ...editingRegisterExpense, description: e.target.value })} 
+                    required 
+                    placeholder="Details..."
+                  />
+                </div>
+                <div className="form-group" style={{ marginBottom: "1rem" }}>
+                  <label className="form-label">Amount (₹) *</label>
+                  <input 
+                    type="number" 
+                    min="1" 
+                    className="form-input" 
+                    value={editingRegisterExpense.amount} 
+                    onChange={e => setEditingRegisterExpense({ ...editingRegisterExpense, amount: Number(e.target.value) })} 
+                    required 
+                  />
+                </div>
+              </form>
+            </div>
+            <div className="modal-footer">
+              <button type="button" className="tbl-btn" onClick={() => setEditingRegisterExpense(null)}>Cancel</button>
+              <button type="submit" form="edit-reg-expense-form" className="btn-add" disabled={saving}>
+                {saving ? "Saving..." : "Save Changes"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </>
   );

@@ -208,7 +208,7 @@ export default function AdminLayout() {
   // ── Reload helper ──────────────────────────────────────────────────────────
   const reload = useCallback(() => fetchAdminData().then(setAdminData), []);
 
-  // ── Initial data load ──────────────────────────────────────────────────────
+  // ── Initial data load & reload on route navigation ──────────────────────────
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (user) setUserEmail(user.email || "Admin");
@@ -217,13 +217,6 @@ export default function AdminLayout() {
       .then(setAdminData)
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, []);
-
-  // ── Reload data on route navigation ────────────────────────────────────────
-  useEffect(() => {
-    fetchAdminData()
-      .then(setAdminData)
-      .catch(console.error);
   }, [location.pathname]);
 
   // ── Low stock toast (kept) ─────────────────────────────────────────────────
