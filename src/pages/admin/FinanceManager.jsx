@@ -11,7 +11,8 @@ import {
   saveExpense, 
   deleteExpense, 
   saveExpenseCategory, 
-  deleteExpenseCategory 
+  deleteExpenseCategory,
+  saveStaffAdvance
 } from "../../lib/api";
 
 export default function FinanceManager() {
@@ -31,6 +32,8 @@ export default function FinanceManager() {
   const [registerNotes, setRegisterNotes] = useState("");
   const [cashRegisterExpenseAmount, setCashRegisterExpenseAmount] = useState("");
   const [cashRegisterExpenseNotesInput, setCashRegisterExpenseNotesInput] = useState("");
+  const [cashRegisterExpenseCategory, setCashRegisterExpenseCategory] = useState("Other");
+  const [cashRegisterExpenseStaffId, setCashRegisterExpenseStaffId] = useState("");
   
   const [editingExpense, setEditingExpense] = useState(null); // null | expense
 
@@ -160,26 +163,46 @@ export default function FinanceManager() {
       toast.error("Please enter a valid positive expense amount");
       return;
     }
+    if (cashRegisterExpenseCategory === "Staff Advance" && !cashRegisterExpenseStaffId) {
+      toast.error("Please select a staff member for the advance payout");
+      return;
+    }
+
     setSaving(true);
     try {
       const currentExpenses = Number(activeRegister.expenses || 0) + amt;
       const separator = activeRegister.expense_notes ? " | " : "";
-      const currentNotes = (activeRegister.expense_notes || "") + separator + `${cashRegisterExpenseNotesInput} (Rs ${amt})`;
+      const label = cashRegisterExpenseCategory === "Staff Advance" 
+        ? "Staff Advance" 
+        : cashRegisterExpenseCategory;
+      const currentNotes = (activeRegister.expense_notes || "") + separator + `${label}: ${cashRegisterExpenseNotesInput || "Payout"} (Rs ${amt})`;
 
       await updateCashRegisterExpenses(activeRegister.id, currentExpenses, currentNotes);
       
-      // Sync into the main expenses table automatically (under category 'Other' or custom selected)
-      await saveExpense({
-        category: "Other",
-        description: `Register Payout: ${cashRegisterExpenseNotesInput}`,
-        amount: amt,
-        date: regDate,
-        payment_method: "Cash"
-      });
+      if (cashRegisterExpenseCategory === "Staff Advance") {
+        const emp = (staff || []).find(st => st.id === cashRegisterExpenseStaffId);
+        await saveStaffAdvance({
+          staff_id: cashRegisterExpenseStaffId,
+          staff_name: emp ? emp.name : "Staff",
+          amount: amt,
+          date: regDate,
+          work_month: regDate.slice(0, 7),
+          notes: cashRegisterExpenseNotesInput || "Register Payout Staff Advance"
+        });
+      } else {
+        await saveExpense({
+          category: cashRegisterExpenseCategory,
+          description: `Register Payout: ${cashRegisterExpenseNotesInput || "Cash Drawer Payout"}`,
+          amount: amt,
+          date: regDate,
+          payment_method: "Cash"
+        });
+      }
 
-      toast.success("Expense logged in register and sync'd to expense manager!");
+      toast.success("Expense logged in register and sync'd successfully!");
       setCashRegisterExpenseAmount("");
       setCashRegisterExpenseNotesInput("");
+      setCashRegisterExpenseStaffId("");
       reload();
     } catch (err) {
       toast.error(err.message || "Failed to log expense");
@@ -187,6 +210,7 @@ export default function FinanceManager() {
       setSaving(false);
     }
   };
+
 
   const handleCloseRegister = async (e) => {
     e.preventDefault();
@@ -701,12 +725,50 @@ Report generated: ${new Date().toLocaleString("en-IN")}
                       </div>
                       <div className="form-row">
                         <div className="form-group">
-                          <label className="form-label">Expense Amount (₹)</label>
-                          <input type="number" min="1" className="form-input" value={cashRegisterExpenseAmount} onChange={e => setCashRegisterExpenseAmount(e.target.value)} placeholder="e.g. 150" />
+                          <label className="form-label">Expense Category *</label>
+                          <select 
+                            className="form-input" 
+                            value={cashRegisterExpenseCategory} 
+                            onChange={e => {
+                              setCashRegisterExpenseCategory(e.target.value);
+                              if (e.target.value !== "Staff Advance") setCashRegisterExpenseStaffId("");
+                            }}
+                          >
+                            <option value="Other">Other</option>
+                            <option value="Staff Advance">Staff Advance</option>
+                            {(expenseCategories || [])
+                              .filter(c => c.name !== "Other" && c.name !== "Staff Advance")
+                              .map(cat => (
+                                <option key={cat.id} value={cat.name}>{cat.name}</option>
+                              ))
+                            }
+                          </select>
+                        </div>
+                        {cashRegisterExpenseCategory === "Staff Advance" && (
+                          <div className="form-group">
+                            <label className="form-label">Staff Member *</label>
+                            <select 
+                              className="form-input" 
+                              value={cashRegisterExpenseStaffId} 
+                              onChange={e => setCashRegisterExpenseStaffId(e.target.value)}
+                              required
+                            >
+                              <option value="" disabled>-- Select Employee --</option>
+                              {(staff || []).filter(s => s.active).map(s => (
+                                <option key={s.id} value={s.id}>{s.name}</option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
+                      </div>
+                      <div className="form-row">
+                        <div className="form-group">
+                          <label className="form-label">Expense Amount (₹) *</label>
+                          <input type="number" min="1" className="form-input" value={cashRegisterExpenseAmount} onChange={e => setCashRegisterExpenseAmount(e.target.value)} placeholder="e.g. 150" required />
                         </div>
                         <div className="form-group">
-                          <label className="form-label">Expense Description</label>
-                          <input type="text" className="form-input" value={cashRegisterExpenseNotesInput} onChange={e => setCashRegisterExpenseNotesInput(e.target.value)} placeholder="e.g. sweep materials, snack tea..." />
+                          <label className="form-label">Expense Description / Notes</label>
+                          <input type="text" className="form-input" value={cashRegisterExpenseNotesInput} onChange={e => setCashRegisterExpenseNotesInput(e.target.value)} placeholder="e.g. sweep materials, laundry, tea..." />
                         </div>
                       </div>
                       <button type="submit" className="tbl-btn danger" style={{ marginTop: "0.5rem", width: "100%" }} disabled={saving}>
