@@ -824,10 +824,14 @@ export async function deleteStaff(id) {
   if (error) throw error;
 }
 
-export async function saveAttendance(rows) {
-  const cleanRows = rows.map(r => ({
+export async function saveAttendance(dateOrRows, rowsIfTwoArgs) {
+  const actualRows = Array.isArray(dateOrRows) ? dateOrRows : rowsIfTwoArgs;
+  const fallbackDate = Array.isArray(dateOrRows) ? null : dateOrRows;
+
+  const cleanRows = (actualRows || []).map(r => ({
+    id: r.id || undefined,
     staff_id: r.staff_id,
-    date: r.date,
+    date: r.date || fallbackDate,
     status: r.status,
     check_in: r.check_in || null,
     check_out: r.check_out || null,
