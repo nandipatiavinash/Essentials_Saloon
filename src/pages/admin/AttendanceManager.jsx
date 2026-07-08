@@ -118,7 +118,10 @@ export default function AttendanceManager() {
       toast.success(`Attendance updated for ${staffName}!`);
       reload();
     } catch (err) {
-      toast.error("Failed to save changes: " + err.message);
+      const msg = err.message === "Failed to fetch" 
+        ? "Network connection error. Please check your internet connection and try again." 
+        : err.message;
+      toast.error("Failed to save changes: " + msg);
     } finally {
       setSaving(false);
     }
@@ -163,7 +166,10 @@ export default function AttendanceManager() {
       toast.success("Attendance logs saved successfully!");
       reload();
     } catch (err) {
-      toast.error(err.message || "Failed to save daily roster logs");
+      const msg = err.message === "Failed to fetch" 
+        ? "Network connection error. Please check your internet connection and try again." 
+        : err.message;
+      toast.error("Failed to save changes: " + msg);
     } finally {
       setSaving(false);
     }
