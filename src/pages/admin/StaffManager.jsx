@@ -44,6 +44,86 @@ export default function StaffManager() {
     return nextMonth.toISOString().slice(0, 10);
   });
 
+  // --- DRAFT STATE FOR PAYROLL WORKSHEET ---
+  const [draftPayments, setDraftPayments] = useState({});
+
+  const handleDraftChange = (pId, field, value) => {
+    setDraftPayments(prev => {
+      const original = worksheetRecords.find(r => r.id === pId) || {};
+      const currentDraft = prev[pId] || {
+        base_salary: original.base_salary || 0,
+        days_present: original.days_present || 0,
+        tips_earned: original.tips_earned || 0,
+        incentives: original.incentives || 0,
+        advances_deducted: original.advances_deducted || 0,
+        other_deductions: original.other_deductions || 0,
+        scheduled_payment_date: original.scheduled_payment_date || "",
+        notes: original.notes || ""
+      };
+      
+      const updatedDraft = {
+        ...currentDraft,
+        [field]: value
+      };
+      
+      // Recalculate net payable for the draft
+      updatedDraft.net_payable = Number(updatedDraft.base_salary) + 
+                                 Number(updatedDraft.tips_earned) + 
+                                 Number(updatedDraft.incentives) - 
+                                 Number(updatedDraft.advances_deducted) - 
+                                 Number(updatedDraft.other_deductions);
+                                 
+      return {
+        ...prev,
+        [pId]: updatedDraft
+      };
+    });
+  };
+
+  const handleSaveDraftRow = async (pId) => {
+    const draft = draftPayments[pId];
+    if (!draft) return;
+    const original = (staffPayments || []).find(rec => rec.id === pId);
+    if (!original) return;
+
+    setSaving(true);
+    try {
+      await saveStaffPayment({
+        ...original,
+        base_salary: Number(draft.base_salary),
+        days_present: Number(draft.days_present),
+        tips_earned: Number(draft.tips_earned),
+        incentives: Number(draft.incentives),
+        advances_deducted: Number(draft.advances_deducted),
+        other_deductions: Number(draft.other_deductions),
+        net_payable: Number(draft.net_payable),
+        scheduled_payment_date: draft.scheduled_payment_date,
+        notes: draft.notes
+      });
+      
+      toast.success("Worksheet row updated successfully!");
+      setDraftPayments(prev => {
+        const copy = { ...prev };
+        delete copy[pId];
+        return copy;
+      });
+      reload();
+    } catch (err) {
+      toast.error(err.message || "Failed to update worksheet row");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleCancelDraftRow = (pId) => {
+    setDraftPayments(prev => {
+      const copy = { ...prev };
+      delete copy[pId];
+      return copy;
+    });
+  };
+
+
   // Helpers
   const formatMonthLabel = (ym) => {
     const [y, m] = ym.split("-");
@@ -302,17 +382,40 @@ export default function StaffManager() {
   }, [staffAdvances, payrollMonth]);
 
   // Compute monthly worksheet records
+  // Compute monthly worksheet records
   const worksheetRecords = useMemo(() => {
     const list = (staffPayments || []).filter(p => p.work_month === payrollMonth);
-    // Include staff name
     return list.map(p => {
       const s = (staff || []).find(st => st.id === p.staff_id);
+      
+      let advances = p.advances_deducted || 0;
+      let tips = p.tips_earned || 0;
+      let net = p.net_payable;
+
+      if (p.status === "unpaid" && s) {
+        // Calculate live pending advances
+        const monthAdvances = (staffAdvances || []).filter(a => a.staff_id === s.id && a.work_month === payrollMonth && a.status === "pending");
+        advances = monthAdvances.reduce((acc, a) => acc + Number(a.amount || 0), 0);
+
+        // Calculate live tips earned
+        const monthTips = (tipSplits || []).filter(ts => ts.staff_name === s.name && (
+          (invoices || []).some(inv => inv.id === ts.invoice_id && (inv.billing_at || "").slice(0, 7) === payrollMonth)
+        ));
+        tips = monthTips.reduce((acc, t) => acc + Number(t.tip_amount || 0), 0);
+
+        // Recalculate net payable dynamically
+        net = Number(p.base_salary || 0) + tips + Number(p.incentives || 0) - advances - Number(p.other_deductions || 0);
+      }
+
       return {
         ...p,
+        advances_deducted: advances,
+        tips_earned: tips,
+        net_payable: net,
         staffName: s ? s.name : "Unknown staff"
       };
     });
-  }, [staffPayments, payrollMonth, staff]);
+  }, [staffPayments, payrollMonth, staff, staffAdvances, tipSplits, invoices]);
 
   return (
     <>
@@ -505,6 +608,20 @@ export default function StaffManager() {
               <tbody>
                 {worksheetRecords.map(p => {
                   const unpaid = p.status === "unpaid";
+                  const draft = draftPayments[p.id];
+                  const hasDraft = !!draft;
+
+                  // Resolve values from draft if it exists, otherwise use original record values
+                  const base_salary = hasDraft ? draft.base_salary : p.base_salary;
+                  const days_present = hasDraft ? draft.days_present : (p.days_present || 0);
+                  const tips_earned = hasDraft ? draft.tips_earned : (p.tips_earned || 0);
+                  const incentives = hasDraft ? draft.incentives : (p.incentives || 0);
+                  const advances_deducted = hasDraft ? draft.advances_deducted : (p.advances_deducted || 0);
+                  const other_deductions = hasDraft ? draft.other_deductions : (p.other_deductions || 0);
+                  const net_payable = hasDraft ? draft.net_payable : (p.net_payable || 0);
+                  const scheduled_payment_date = hasDraft ? draft.scheduled_payment_date : (p.scheduled_payment_date || "");
+                  const notes = hasDraft ? draft.notes : (p.notes || "");
+
                   return (
                     <tr key={p.id}>
                       <td style={{ fontWeight: 600 }}>{p.staffName}</td>
@@ -514,12 +631,10 @@ export default function StaffManager() {
                           min="0"
                           className="form-input"
                           style={{ padding: "0.2rem", fontSize: "0.78rem", width: "100%" }}
-                          value={p.base_salary}
+                          value={base_salary}
                           disabled={!unpaid}
                           onChange={(e) => {
-                            const base = Number(e.target.value) || 0;
-                            const net = base + Number(p.tips_earned) + Number(p.incentives) - Number(p.advances_deducted) - Number(p.other_deductions);
-                            handleSavePaymentRow({ ...p, base_salary: base, net_payable: net });
+                            handleDraftChange(p.id, "base_salary", Number(e.target.value) || 0);
                           }}
                         />
                       </td>
@@ -529,11 +644,10 @@ export default function StaffManager() {
                           min="0"
                           className="form-input"
                           style={{ padding: "0.2rem", fontSize: "0.78rem", width: "100%", textAlign: "center" }}
-                          value={p.days_present || 0}
+                          value={days_present}
                           disabled={!unpaid}
                           onChange={(e) => {
-                            const dp = Number(e.target.value) || 0;
-                            handleSavePaymentRow({ ...p, days_present: dp });
+                            handleDraftChange(p.id, "days_present", Number(e.target.value) || 0);
                           }}
                         />
                       </td>
@@ -543,12 +657,10 @@ export default function StaffManager() {
                           min="0"
                           className="form-input"
                           style={{ padding: "0.2rem", fontSize: "0.78rem", width: "100%" }}
-                          value={p.tips_earned || 0}
+                          value={tips_earned}
                           disabled={!unpaid}
                           onChange={(e) => {
-                            const tips = Number(e.target.value) || 0;
-                            const net = Number(p.base_salary) + tips + Number(p.incentives) - Number(p.advances_deducted) - Number(p.other_deductions);
-                            handleSavePaymentRow({ ...p, tips_earned: tips, net_payable: net });
+                            handleDraftChange(p.id, "tips_earned", Number(e.target.value) || 0);
                           }}
                         />
                       </td>
@@ -557,27 +669,10 @@ export default function StaffManager() {
                           type="number"
                           className="form-input"
                           style={{ padding: "0.2rem", fontSize: "0.78rem", width: "100%" }}
-                          value={p.incentives}
+                          value={incentives}
                           disabled={!unpaid}
                           onChange={(e) => {
-                            const inc = Number(e.target.value) || 0;
-                            const net = Number(p.base_salary) + Number(p.tips_earned) + inc - Number(p.advances_deducted) - Number(p.other_deductions);
-                            handleSavePaymentRow({ ...p, incentives: inc, net_payable: net });
-                          }}
-                        />
-                      </td>
-                      <td>
-                        <input
-                          type="number"
-                          min="0"
-                          className="form-input"
-                          style={{ padding: "0.2rem", fontSize: "0.78rem", width: "100%" }}
-                          value={p.advances_deducted || 0}
-                          disabled={!unpaid}
-                          onChange={(e) => {
-                            const adv = Number(e.target.value) || 0;
-                            const net = Number(p.base_salary) + Number(p.tips_earned) + Number(p.incentives) - adv - Number(p.other_deductions || 0);
-                            handleSavePaymentRow({ ...p, advances_deducted: adv, net_payable: net });
+                            handleDraftChange(p.id, "incentives", Number(e.target.value) || 0);
                           }}
                         />
                       </td>
@@ -587,28 +682,39 @@ export default function StaffManager() {
                           min="0"
                           className="form-input"
                           style={{ padding: "0.2rem", fontSize: "0.78rem", width: "100%" }}
-                          value={p.other_deductions || 0}
+                          value={advances_deducted}
+                          disabled={!unpaid}
+                          onChange={(e) => {
+                            handleDraftChange(p.id, "advances_deducted", Number(e.target.value) || 0);
+                          }}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="number"
+                          min="0"
+                          className="form-input"
+                          style={{ padding: "0.2rem", fontSize: "0.78rem", width: "100%" }}
+                          value={other_deductions}
                           disabled={!unpaid}
                           placeholder="Other ded."
                           onChange={(e) => {
-                            const ded = Number(e.target.value) || 0;
-                            const net = Number(p.base_salary) + Number(p.tips_earned) + Number(p.incentives) - Number(p.advances_deducted) - ded;
-                            handleSavePaymentRow({ ...p, other_deductions: ded, net_payable: net });
+                            handleDraftChange(p.id, "other_deductions", Number(e.target.value) || 0);
                           }}
                         />
                       </td>
                       <td style={{ textAlign: "right", fontWeight: "bold", fontSize: "0.85rem" }}>
-                        Rs {Number(p.net_payable).toLocaleString("en-IN")}
+                        Rs {Number(net_payable).toLocaleString("en-IN")}
                       </td>
                       <td>
                         <input
                           type="date"
                           className="form-input"
                           style={{ padding: "0.15rem", fontSize: "0.75rem", width: 110 }}
-                          value={p.scheduled_payment_date || ""}
+                          value={scheduled_payment_date}
                           disabled={!unpaid}
                           onChange={(e) => {
-                            handleSavePaymentRow({ ...p, scheduled_payment_date: e.target.value });
+                            handleDraftChange(p.id, "scheduled_payment_date", e.target.value);
                           }}
                         />
                       </td>
@@ -617,11 +723,11 @@ export default function StaffManager() {
                           type="text"
                           className="form-input"
                           style={{ padding: "0.2rem", fontSize: "0.75rem", width: 120 }}
-                          value={p.notes || ""}
+                          value={notes}
                           disabled={!unpaid}
                           placeholder="Add notes..."
                           onChange={(e) => {
-                            handleSavePaymentRow({ ...p, notes: e.target.value });
+                            handleDraftChange(p.id, "notes", e.target.value);
                           }}
                         />
                       </td>
@@ -631,7 +737,16 @@ export default function StaffManager() {
                         </span>
                       </td>
                       <td style={{ textAlign: "right" }}>
-                        {unpaid ? (
+                        {hasDraft ? (
+                          <div style={{ display: "flex", gap: "0.25rem", justifyContent: "flex-end" }}>
+                            <button className="btn-add" style={{ padding: "0.25rem 0.5rem", fontSize: "0.7rem", background: "#2e7d32" }} onClick={() => handleSaveDraftRow(p.id)} disabled={saving}>
+                              {saving ? "..." : "Save"}
+                            </button>
+                            <button className="tbl-btn" style={{ padding: "0.25rem 0.5rem", fontSize: "0.7rem" }} onClick={() => handleCancelDraftRow(p.id)} disabled={saving}>
+                              Cancel
+                            </button>
+                          </div>
+                        ) : unpaid ? (
                           <button className="btn-add" style={{ padding: "0.25rem 0.6rem", fontSize: "0.7rem", background: "#2e7d32" }} onClick={() => setPayoutModal({ paymentId: p.id, staffId: p.staff_id, workMonth: p.work_month, netPayable: p.net_payable, staffName: p.staffName, paymentMethod: "Cash", notes: p.notes, paymentDate: new Date().toISOString().slice(0, 10) })}>
                             Mark Paid
                           </button>

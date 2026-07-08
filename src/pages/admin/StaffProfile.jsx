@@ -7,9 +7,19 @@ import { useNavigate, useParams } from "react-router-dom";
 export default function StaffProfile() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { staff, attendance, invoices, tipSplits, staffPayments } = useAdmin();
+  const { staff, attendance, invoices, tipSplits, staffPayments, staffAdvances } = useAdmin();
 
   const member = useMemo(() => (staff || []).find(s => String(s.id) === String(id)), [staff, id]);
+
+  const memberAdvances = useMemo(() => {
+    return (staffAdvances || []).filter(a => a.staff_id === member?.id);
+  }, [staffAdvances, member]);
+
+  const totalPendingAdvances = useMemo(() => {
+    return memberAdvances
+      .filter(a => a.status === "pending")
+      .reduce((sum, a) => sum + Number(a.amount || 0), 0);
+  }, [memberAdvances]);
 
   const todayStr = new Date().toISOString().slice(0, 10);
   const [filterMode, setFilterMode] = useState("month"); // month | range
@@ -235,6 +245,11 @@ export default function StaffProfile() {
           <div className="stat-value">{kpis.totalHours || 0} <span style={{ fontSize: "0.7rem", fontWeight: 400 }}>hrs</span></div>
           <div className="stat-sub">Total working hours</div>
         </div>
+        <div className="stat-card">
+          <div className="stat-label" style={{ color: "#b71c1c" }}>Pending Advances</div>
+          <div className="stat-value" style={{ color: "#b71c1c" }}>Rs {totalPendingAdvances.toLocaleString("en-IN")}</div>
+          <div className="stat-sub">Advances to be deducted</div>
+        </div>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "2rem" }}>
@@ -395,6 +410,55 @@ export default function StaffProfile() {
             })}
             {!attendanceForStaff.length && (
               <tr><td colSpan={6} style={{ textAlign: "center", padding: "3rem", color: "var(--a-muted)" }}>No attendance records found.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Cash Advances Ledger */}
+      <div className="table-wrap" style={{ marginBottom: "2rem" }}>
+        <div className="table-header">
+          <div className="table-title">
+            <DollarSign size={14} style={{ marginRight: 6, color: "#b71c1c" }} />
+            Active & Historic Cash Advances
+          </div>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Date Issued</th>
+              <th>Advance Amount</th>
+              <th>Target Deduct Month</th>
+              <th>Status</th>
+              <th>Notes / Reason</th>
+            </tr>
+          </thead>
+          <tbody>
+            {memberAdvances.map(a => (
+              <tr key={a.id}>
+                <td style={{ fontSize: "0.78rem", fontWeight: 600 }}>
+                  {new Date(a.date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
+                </td>
+                <td style={{ fontWeight: "bold", color: "#b71c1c" }}>
+                  Rs {Number(a.amount || 0).toLocaleString("en-IN")}
+                </td>
+                <td style={{ fontSize: "0.78rem", fontWeight: 500 }}>
+                  {new Date(a.work_month + "-02").toLocaleDateString("en-IN", { month: "long", year: "numeric" })}
+                </td>
+                <td>
+                  <span className="badge" style={{ 
+                    background: a.status === "pending" ? "rgba(183,28,28,0.08)" : "rgba(46,125,50,0.08)", 
+                    color: a.status === "pending" ? "#b71c1c" : "#2e7d32", 
+                    padding: "2px 6px" 
+                  }}>
+                    {a.status.toUpperCase()}
+                  </span>
+                </td>
+                <td style={{ fontSize: "0.72rem", color: "var(--a-muted)" }}>{a.notes || "—"}</td>
+              </tr>
+            ))}
+            {!memberAdvances.length && (
+              <tr><td colSpan={5} style={{ textAlign: "center", padding: "2rem", color: "var(--a-muted)" }}>No advances recorded for this employee.</td></tr>
             )}
           </tbody>
         </table>
