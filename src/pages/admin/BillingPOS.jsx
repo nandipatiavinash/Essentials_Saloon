@@ -67,6 +67,11 @@ export default function BillingPOS() {
 
     return (staff || []).filter(s => {
       if (!s.active) return false;
+      
+      const role = (s.role || "").toLowerCase();
+      const isAllowedRole = role.includes("stylist") || role === "manager";
+      if (!isAllowedRole) return false;
+
       if (selectedStaffNames.has(s.name)) return true;
       const att = todayAttendance.find(a => a.staff_id === s.id);
       if (!att) return false;
@@ -304,7 +309,6 @@ export default function BillingPOS() {
   const submitBill = async (e) => {
     e.preventDefault();
     setAttemptedSubmit(true);
-    if (!bill.staff_name) { toast.error("Please select a main staff member"); return; }
     const missingItemStaff = bill.items.some(item => !item.staff_name);
     if (missingItemStaff) { toast.error("Please select a staff member for all items"); return; }
 
@@ -327,6 +331,7 @@ export default function BillingPOS() {
       }
       const saved = await saveInvoice({
         ...bill,
+        staff_name: bill.items[0]?.staff_name || null,
         transaction_id: transactionId,
         billing_at: bill.billing_at
           ? new Date(bill.billing_at + "T12:00:00+05:30").toISOString()
@@ -774,10 +779,6 @@ export default function BillingPOS() {
               </div>
             )}
             <div className="form-row" style={{ marginTop: "1rem" }}>
-              <div className="form-group" style={{ zIndex: 10 }}>
-                <label className="form-label">Staff Name</label>
-                <SearchableStaffDropdown staffList={presentStaff} value={bill.staff_name} onChange={(val) => setBill({ ...bill, staff_name: val })} placeholder="Select Staff" isInvalid={attemptedSubmit && !bill.staff_name} />
-              </div>
               <div className="form-group">
                 <label className="form-label">Billing Date</label>
                 <input
@@ -796,7 +797,7 @@ export default function BillingPOS() {
                 <button type="button" className={`tbl-btn${addTab === "services" ? " active" : ""}`} onClick={() => setAddTab("services")}>✂️ Services</button>
                 <button type="button" className={`tbl-btn${addTab === "products" ? " active" : ""}`} onClick={() => setAddTab("products")}>📦 Products ({activeInventory.length} in stock)</button>
               </div>
-              <button type="button" className="btn-add" disabled={billSaved} onClick={() => setCustomItemModal({ item_type: "service", name: "", price: "", quantity: 1, staff_name: bill.staff_name || "" })} style={{ fontSize: "0.72rem", padding: "0.4rem 0.8rem" }}>
+              <button type="button" className="btn-add" disabled={billSaved} onClick={() => setCustomItemModal({ item_type: "service", name: "", price: "", quantity: 1, staff_name: bill.items[0]?.staff_name || "" })} style={{ fontSize: "0.72rem", padding: "0.4rem 0.8rem" }}>
                 ✨ Add Custom Item
               </button>
             </div>
@@ -1152,12 +1153,7 @@ export default function BillingPOS() {
                     <span style={{ color: "#666" }}>Client:</span>
                     <strong>{viewInvoiceData.invoice.client_name} ({viewInvoiceData.invoice.mobile})</strong>
                   </div>
-                  {viewInvoiceData.invoice.staff_name && (
-                    <div style={{ display: "flex", justifyContent: "space-between" }}>
-                      <span style={{ color: "#666" }}>Main Stylist:</span>
-                      <strong>{viewInvoiceData.invoice.staff_name}</strong>
-                    </div>
-                  )}
+
                   {viewInvoiceData.invoice.payment_method && (
                     <div style={{ display: "flex", justifyContent: "space-between" }}>
                       <span style={{ color: "#666" }}>Payment Method:</span>

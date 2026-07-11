@@ -403,7 +403,7 @@ Report generated: ${new Date().toLocaleString("en-IN")}
   const [fxModal, setFxModal] = useState(null); // null | { name, category, amount, due_day, notes, active, id? }
   const [fxSaving, setFxSaving] = useState(false);
 
-  const FX_CATEGORIES = ["Rent", "Electricity", "Water", "Internet", "Staff Room", "Laundry", "Maintenance", "Insurance", "Other"];
+  const FX_CATEGORIES = ["Rent", "Royalty", "Electricity", "Water", "Internet", "Staff Room", "Laundry", "Maintenance", "Insurance", "Other"];
 
   const handleSaveFixedExpense = async (e) => {
     e.preventDefault();
@@ -727,8 +727,9 @@ Report generated: ${new Date().toLocaleString("en-IN")}
                           >
                             <option value="Other">Other</option>
                             <option value="Staff Advance">Staff Advance</option>
+                            <option value="Royalty">Royalty</option>
                             {(expenseCategories || [])
-                              .filter(c => c.name !== "Other" && c.name !== "Staff Advance")
+                              .filter(c => c.name !== "Other" && c.name !== "Staff Advance" && c.name !== "Royalty")
                               .map(cat => (
                                 <option key={cat.id} value={cat.name}>{cat.name}</option>
                               ))
@@ -1226,6 +1227,7 @@ Report generated: ${new Date().toLocaleString("en-IN")}
                     required
                   >
                     <option value="Rent">Rent</option>
+                    <option value="Royalty">Royalty</option>
                     <option value="Electricity">Electricity</option>
                     <option value="Water">Water</option>
                     <option value="Staff Payout">Staff Payout</option>

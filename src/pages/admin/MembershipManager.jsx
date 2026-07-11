@@ -9,7 +9,7 @@ export default function MembershipManager() {
   const [search, setSearch] = useState("");
   const [modalObj, setModalObj] = useState(null); // null or { customerId, name, mobile, is_member, membership_tier, membership_start, membership_end, membership_id, isNew }
   const [saving, setSaving] = useState(false);
-  const [sortField, setSortField] = useState("name");
+  const [sortField, setSortField] = useState("membership_end");
   const [sortAsc, setSortAsc] = useState(true);
 
   const safeParseDate = (dateStr) => {
@@ -37,6 +37,16 @@ export default function MembershipManager() {
     return parsed;
   };
 
+  const getDaysRemaining = (endDateStr) => {
+    if (!endDateStr) return 0;
+    const end = safeParseDate(endDateStr);
+    const today = new Date();
+    end.setHours(0,0,0,0);
+    today.setHours(0,0,0,0);
+    const diff = end.getTime() - today.getTime();
+    return Math.ceil(diff / (1000 * 60 * 60 * 24));
+  };
+
   const filtered = useMemo(() => {
     const term = search.toLowerCase();
     let result = (customers || []).filter((client) =>
@@ -44,6 +54,71 @@ export default function MembershipManager() {
     );
     if (sortField) {
       result.sort((a, b) => {
+        if (sortField === "membership_end") {
+          const daysA = getDaysRemaining(a.membership_end);
+          const daysB = getDaysRemaining(b.membership_end);
+          
+          const isMemberA = !!a.is_member && a.membership_end;
+          const isMemberB = !!b.is_member && b.membership_end;
+          const isActiveA = isMemberA && daysA >= 0;
+          const isActiveB = isMemberB && daysB >= 0;
+          const isExpiredA = isMemberA && daysA < 0;
+          const isExpiredB = isMemberB && daysB < 0;
+
+          // Priority 1: Active Member (daysRemaining >= 0)
+          // Priority 2: Expired Member (daysRemaining < 0)
+          // Priority 3: Non-member
+          let prioA = 3;
+          if (isActiveA) prioA = 1;
+          else if (isExpiredA) prioA = 2;
+
+          let prioB = 3;
+          if (isActiveB) prioB = 1;
+          else if (isExpiredB) prioB = 2;
+
+          if (prioA !== prioB) {
+            return sortAsc ? (prioA - prioB) : (prioB - prioA);
+          }
+
+          if (isActiveA && isActiveB) {
+            if (daysA !== daysB) {
+              return sortAsc ? (daysA - daysB) : (daysB - daysA);
+            }
+          } else if (isExpiredA && isExpiredB) {
+            if (daysA !== daysB) {
+              return sortAsc ? (daysA - daysB) : (daysB - daysA);
+            }
+          }
+
+          const nameA = (a.name || "").toLowerCase();
+          const nameB = (b.name || "").toLowerCase();
+          if (nameA < nameB) return -1;
+          if (nameA > nameB) return 1;
+          return 0;
+        }
+
+        if (sortField === "is_member") {
+          const daysA = getDaysRemaining(a.membership_end);
+          const daysB = getDaysRemaining(b.membership_end);
+          const isActiveA = !!a.is_member && a.membership_end && daysA >= 0;
+          const isActiveB = !!b.is_member && b.membership_end && daysB >= 0;
+
+          if (isActiveA && !isActiveB) return sortAsc ? -1 : 1;
+          if (!isActiveA && isActiveB) return sortAsc ? 1 : -1;
+
+          let valA = a.is_member ? 1 : 0;
+          let valB = b.is_member ? 1 : 0;
+          if (valA !== valB) {
+            return sortAsc ? (valB - valA) : (valA - valB);
+          }
+
+          const nameA = (a.name || "").toLowerCase();
+          const nameB = (b.name || "").toLowerCase();
+          if (nameA < nameB) return -1;
+          if (nameA > nameB) return 1;
+          return 0;
+        }
+
         let valA = a[sortField];
         let valB = b[sortField];
 
@@ -87,16 +162,6 @@ export default function MembershipManager() {
     return { totalMembers: activeMembers, expiredMembers, nonMembers, totalClients };
   }, [customers]);
 
-  const getDaysRemaining = (endDateStr) => {
-    if (!endDateStr) return 0;
-    const end = safeParseDate(endDateStr);
-    const today = new Date();
-    end.setHours(0,0,0,0);
-    today.setHours(0,0,0,0);
-    const diff = end.getTime() - today.getTime();
-    return Math.ceil(diff / (1000 * 60 * 60 * 24));
-  };
-
   const handleSort = (field) => {
     if (sortField === field) {
       setSortAsc(!sortAsc);
@@ -116,7 +181,7 @@ export default function MembershipManager() {
       customerId: client.id,
       name: client.name,
       mobile: client.mobile,
-      is_member: !!client.is_member,
+      is_member: true,
       membership_id: client.membership_id || "",
       membership_tier: client.membership_tier || "Member",
       membership_start: client.membership_start || today,
