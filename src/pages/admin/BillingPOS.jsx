@@ -48,6 +48,9 @@ export default function BillingPOS() {
   const [attemptedSubmit, setAttemptedSubmit] = useState(false);
   const [addTab, setAddTab] = useState("services");
   const [viewInvoiceData, setViewInvoiceData] = useState(null);
+  const [allTimeSearch, setAllTimeSearch] = useState("");
+  const [allTimeResults, setAllTimeResults] = useState([]);
+  const [loadingAllTime, setLoadingAllTime] = useState(false);
   const [customItemModal, setCustomItemModal] = useState(null); // null | { item_type, name, price, quantity, staff_name }
 
 
@@ -116,6 +119,22 @@ export default function BillingPOS() {
     }
     catch (err) { toast.error(err.message); }
     finally { setLoadingHistory(false); }
+  };
+
+  const handleAllTimeSearch = async (term) => {
+    if (!term.trim()) {
+      setAllTimeResults([]);
+      return;
+    }
+    setLoadingAllTime(true);
+    try {
+      const results = await searchInvoices(term);
+      setAllTimeResults(results);
+    } catch (err) {
+      toast.error(err.message || "Failed to search invoices");
+    } finally {
+      setLoadingAllTime(false);
+    }
   };
 
   const safeParseDate = (dateStr) => {
@@ -1123,6 +1142,32 @@ export default function BillingPOS() {
             ))}
             {loadingHistory && <div className="admin-empty compact">Loading invoices...</div>}
             {!loadingHistory && !history.length && <div className="admin-empty compact">No invoices found.</div>}
+          </div>
+        </div>
+
+        <div className="table-wrap history-wrap no-print" style={{ marginTop: "1rem" }}>
+          <div className="table-header">
+            <div className="table-title">Search Invoices (All-Time)</div>
+            <div className="search-inline">
+              <Search size={15} />
+              <input 
+                value={allTimeSearch} 
+                onChange={(e) => setAllTimeSearch(e.target.value)} 
+                onKeyDown={(e) => e.key === "Enter" && handleAllTimeSearch(allTimeSearch)} 
+                placeholder="Invoice # or Mobile..." 
+              />
+            </div>
+          </div>
+          <div className="history-list" style={{ maxHeight: "250px" }}>
+            {allTimeResults.map((row) => (
+              <button type="button" className="history-row" key={row.id} onClick={() => handleViewInvoice(row.id)}>
+                <span><strong>{row.invoice_number}</strong> {row.client_name}</span>
+                <span>Rs {row.total.toLocaleString("en-IN")} <Eye size={14} /></span>
+              </button>
+            ))}
+            {loadingAllTime && <div className="admin-empty compact">Searching invoices...</div>}
+            {!loadingAllTime && !allTimeResults.length && allTimeSearch && <div className="admin-empty compact">No matching invoices.</div>}
+            {!allTimeSearch && <div className="admin-empty compact" style={{ color: "#aaa" }}>Enter invoice number or phone to search.</div>}
           </div>
         </div>
       </aside>
