@@ -85,9 +85,7 @@ export default function ReportsManager() {
         const qty = Number(item.quantity || 1);
         const itemVal = qty * Number(item.price || 0);
 
-        if (itemType === "membership") {
-          return;
-        }
+
 
         if (itemType === "product") {
           if (!productBreakdown[item.service_name]) {
@@ -926,7 +924,7 @@ export default function ReportsManager() {
       staffMap[mainStylist].total += tip;
 
       (inv.invoice_items || []).forEach(item => {
-        if (item.item_type === "membership") return;
+
         const qty = Number(item.quantity || 1);
         const val = qty * Number(item.price || 0);
         const itemStaff = item.staff_name || mainStylist;
