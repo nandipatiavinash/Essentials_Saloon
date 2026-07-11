@@ -51,6 +51,7 @@ export default function BillingPOS() {
   const [allTimeSearch, setAllTimeSearch] = useState("");
   const [allTimeResults, setAllTimeResults] = useState([]);
   const [loadingAllTime, setLoadingAllTime] = useState(false);
+  const [cashReceived, setCashReceived] = useState("");
   const [customItemModal, setCustomItemModal] = useState(null); // null | { item_type, name, price, quantity, staff_name }
 
 
@@ -390,6 +391,7 @@ export default function BillingPOS() {
     setInvoiceItems([]);
     setBillSaved(false);
     setAttemptedSubmit(false);
+    setCashReceived("");
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -628,6 +630,7 @@ export default function BillingPOS() {
       notes: invoiceData.notes || "",
       items: loadedItems
     });
+    setCashReceived("");
     setBillSaved(false);
     setViewInvoiceData(null);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -1002,6 +1005,7 @@ export default function BillingPOS() {
                   value={bill.payment_method} 
                   onChange={(e) => {
                     const method = e.target.value;
+                    setCashReceived("");
                     setBill((prev) => {
                       const updated = { ...prev, payment_method: method };
                       if (method === "Cash + UPI") {
@@ -1069,7 +1073,31 @@ export default function BillingPOS() {
                 </div>
               </div>
             )}
-            <div className="form-group">
+            {(bill.payment_method === "Cash" || bill.payment_method === "Cash + UPI") && (
+              <div className="form-row" style={{ marginTop: "1.25rem", background: "rgba(201,185,154,0.04)", padding: "1.25rem", border: "1px dashed var(--a-gold, #c9b99a)", display: "flex", gap: "1rem", flexDirection: "column" }}>
+                <div style={{ fontSize: "0.7rem", textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--a-gold, #c9b99a)", fontWeight: 600 }}>💵 Cash Change Calculator</div>
+                <div style={{ display: "flex", gap: "1.25rem", flexWrap: "wrap", width: "100%" }}>
+                  <div className="form-group" style={{ flex: 1, minWidth: "150px" }}>
+                    <label className="form-label">Cash Received (Rs)</label>
+                    <input 
+                      type="number" 
+                      min="0"
+                      className="form-input" 
+                      placeholder="e.g. 500, 1000, 2000"
+                      value={cashReceived} 
+                      onChange={(e) => setCashReceived(e.target.value)} 
+                    />
+                  </div>
+                  <div className="form-group" style={{ flex: 1, minWidth: "150px", display: "flex", flexDirection: "column", justifyContent: "center" }}>
+                    <span className="form-label">Change to Return</span>
+                    <strong style={{ fontSize: "1.25rem", color: (Number(cashReceived || 0) - (bill.payment_method === "Cash" ? totals.total : (bill.hybrid_cash || 0))) > 0 ? "var(--a-green, #2e7d32)" : "var(--a-text)" }}>
+                      Rs {Math.max(0, Number(cashReceived || 0) - (bill.payment_method === "Cash" ? totals.total : (bill.hybrid_cash || 0))).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </strong>
+                  </div>
+                </div>
+              </div>
+            )}
+            <div className="form-group" style={{ marginTop: "1.25rem" }}>
               <label className="form-label">Notes</label>
               <textarea className="form-input" rows="2" value={bill.notes} onChange={(e) => setBill({ ...bill, notes: e.target.value })}></textarea>
             </div>

@@ -92,7 +92,7 @@ export default function AnalyticsDashboard() {
         </head>
         <body>
           <h1>Daily Sales Report - ${settings?.name || "Toni & Guy Essensuals"}</h1>
-          <h2>Date: ${new Date(selectedDate).toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })}</h2>
+          <h2>Date: ${new Date(selectedDate).toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</h2>
           <table>
             <thead>
               <tr>
@@ -181,7 +181,7 @@ export default function AnalyticsDashboard() {
           <div className="modal" style={{ maxWidth: "800px", width: "90%" }}>
             <div className="modal-header">
               <div className="modal-title">
-                Sales Drill-down: {new Date(selectedDate).toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })}
+                Sales Drill-down: {new Date(selectedDate).toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
               </div>
               <button className="modal-close" onClick={() => setSelectedDate(null)}>✕</button>
             </div>
