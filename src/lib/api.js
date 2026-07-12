@@ -280,6 +280,14 @@ export async function saveInvoice(payload) {
   const totals = calculateInvoiceTotals(payload);
   const { data: userRes } = await supabase.auth.getUser();
 
+  let oldCustomerId = null;
+  if (payload.id) {
+    const { data: oldInv } = await t("invoices").select("customer_id").eq("id", payload.id).maybeSingle();
+    if (oldInv) {
+      oldCustomerId = oldInv.customer_id;
+    }
+  }
+
   const { data: existingCust } = await t("customers")
     .select("id, is_member, membership_id, membership_tier, membership_start, membership_end")
     .eq("mobile", mobile)
@@ -316,7 +324,7 @@ export async function saveInvoice(payload) {
 
   const { data: customer, error: customerError } = await t("customers")
     .upsert({
-      id: payload.customer_id || existingCust?.id || undefined,
+      id: existingCust ? existingCust.id : undefined,
       name: payload.client_name.trim(),
       mobile,
       notes: payload.customer_notes || null,
@@ -403,6 +411,9 @@ export async function saveInvoice(payload) {
   if (txnError) throw txnError;
 
   await refreshCustomerRollup(customer.id);
+  if (oldCustomerId && oldCustomerId !== customer.id) {
+    await refreshCustomerRollup(oldCustomerId);
+  }
   return normInvoice({ ...invoice, customers: customer });
 }
 
