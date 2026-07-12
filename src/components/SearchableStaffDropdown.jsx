@@ -13,7 +13,7 @@ export default function SearchableStaffDropdown({
   const containerRef = useRef(null);
 
   // Filter staff by search term
-  const activeStaff = (staffList || []).filter(s => s.active);
+  const activeStaff = (staffList || []).filter(s => s.active && s.name?.trim().toLowerCase() !== "other");
   const sortedStaff = [...activeStaff].sort((a, b) => (a.name || "").localeCompare(b.name || ""));
   const filtered = sortedStaff.filter(s => {
     if (!search || search === value) return true;
