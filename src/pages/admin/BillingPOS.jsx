@@ -60,9 +60,27 @@ export default function BillingPOS() {
   const activeInventory = useMemo(() => (inventory || []).filter(item => Number(item.stock_qty) > 0), [inventory]);
   const totals = useMemo(() => calculateInvoiceTotals(bill), [bill]);
 
+  const todayStr = (bill.billing_at || new Date().toISOString()).slice(0, 10);
   const presentStaff = useMemo(() => {
-    return (staff || []).filter(s => s.active);
-  }, [staff]);
+    const todayAttendance = (attendance || []).filter(a => a.date === todayStr);
+    const selectedStaffNames = new Set();
+    if (bill.staff_name) selectedStaffNames.add(bill.staff_name);
+    (bill.items || []).forEach(item => {
+      if (item.staff_name) selectedStaffNames.add(item.staff_name);
+    });
+
+    return (staff || []).filter(s => {
+      if (!s.active) return false;
+      
+      // Exclude staff named 'Other' or with role 'Other'
+      if (s.name?.trim().toLowerCase() === "other" || s.role?.trim().toLowerCase() === "other") return false;
+
+      if (selectedStaffNames.has(s.name)) return true;
+      const att = todayAttendance.find(a => a.staff_id === s.id);
+      if (!att) return false;
+      return att.status === "present" || att.status === "late";
+    });
+  }, [staff, attendance, todayStr, bill.staff_name, bill.items]);
 
   useEffect(() => {
     if (bill.payment_method === "Cash + UPI") {
