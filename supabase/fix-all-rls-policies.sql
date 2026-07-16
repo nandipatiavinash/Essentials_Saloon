@@ -64,6 +64,8 @@ DROP POLICY IF EXISTS "reviews_admin"          ON public.reviews;
 DROP POLICY IF EXISTS "stock_transfers_admin"  ON public.stock_transfers;
 DROP POLICY IF EXISTS "fixed_expenses_admin"   ON public.fixed_expenses;
 DROP POLICY IF EXISTS "fixed_expense_payments_admin" ON public.fixed_expense_payments;
+DROP POLICY IF EXISTS "invoices_public_review_read" ON public.invoices;
+DROP POLICY IF EXISTS "invoice_items_public_review_read" ON public.invoice_items;
 
 -- 3. Create public/anon select policies (for client website)
 CREATE POLICY "categories_public_read" ON public.categories FOR SELECT TO anon, authenticated USING (true);
@@ -77,6 +79,14 @@ CREATE POLICY "bookings_public_insert" ON public.bookings FOR INSERT TO anon, au
 CREATE POLICY "expense_categories_read" ON public.expense_categories FOR SELECT TO anon USING (true);
 CREATE POLICY "reviews_public_insert"  ON public.reviews FOR INSERT TO anon, authenticated WITH CHECK (true);
 CREATE POLICY "reviews_public_select"  ON public.reviews FOR SELECT TO anon, authenticated USING (true);
+CREATE POLICY "invoices_public_review_read" ON public.invoices FOR SELECT TO anon, authenticated USING (review_token IS NOT NULL);
+CREATE POLICY "invoice_items_public_review_read" ON public.invoice_items FOR SELECT TO anon, authenticated USING (
+  EXISTS (
+    SELECT 1 FROM public.invoices
+    WHERE invoices.id = invoice_items.invoice_id
+      AND invoices.review_token IS NOT NULL
+  )
+);
 
 -- 4. Create full admin access policies for authenticated users
 CREATE POLICY "categories_admin"       ON public.categories FOR ALL TO authenticated USING (true) WITH CHECK (true);
@@ -107,3 +117,6 @@ CREATE POLICY "fixed_expense_payments_admin" ON public.fixed_expense_payments FO
 -- 5. Grant permissions to authenticated role on all tables
 GRANT ALL ON ALL TABLES IN SCHEMA public TO authenticated;
 GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO authenticated;
+
+-- 6. Grant select access on invoices and invoice_items to anon role so they can perform token-based lookups
+GRANT SELECT ON public.invoices, public.invoice_items TO anon;
