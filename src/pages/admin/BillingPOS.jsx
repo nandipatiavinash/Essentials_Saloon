@@ -213,29 +213,18 @@ export default function BillingPOS() {
         price = Number(service.member_price);
       }
       
-      const existingIndex = current.items.findIndex(
-        (item) => item.item_type === "service" && String(item.service_id) === String(service.id)
-      );
-
-      let newItems;
-      if (existingIndex > -1) {
-        newItems = current.items.map((item, idx) =>
-          idx === existingIndex ? { ...item, quantity: Number(item.quantity || 1) + 1 } : item
-        );
-      } else {
-        newItems = [
-          ...current.items,
-          {
-            item_type: "service",
-            service_id: service.id,
-            service_name: service.name,
-            quantity: 1,
-            price,
-            tax_inclusive: service.tax_inclusive !== false,
-            staff_name: current.staff_name || "",
-          }
-        ];
-      }
+      const newItems = [
+        ...current.items,
+        {
+          item_type: "service",
+          service_id: service.id,
+          service_name: service.name,
+          quantity: 1,
+          price,
+          tax_inclusive: service.tax_inclusive !== false,
+          staff_name: current.staff_name || "",
+        }
+      ];
 
       return {
         ...current,
