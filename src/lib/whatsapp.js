@@ -136,27 +136,6 @@ export function formatInvoiceMessage(invoice, items = [], settings = {}, reviewU
 
   const clientFirstName = (invoice.client_name || "Valued Client").trim();
 
-  // Always use billing_at from the saved invoice (IST from server)
-  const visitDate = invoice.billing_at
-    ? new Date(invoice.billing_at).toLocaleDateString("en-IN", {
-        day: "2-digit", month: "long", year: "numeric",
-        timeZone: "Asia/Kolkata",
-      })
-    : new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric", timeZone: "Asia/Kolkata" });
-
-  // Membership
-  const isMember = invoice.customer?.is_member || invoice.is_member;
-  const membershipEnd = invoice.customer?.membership_end || invoice.membership_end;
-  const membershipEndStr = membershipEnd
-    ? new Date(membershipEnd).toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" })
-    : null;
-
-  // Services (exclude products from "services" label)
-  const serviceItems = items.filter(item => item.item_type !== "product");
-  const productItems = items.filter(item => item.item_type === "product");
-
-  const totalPaid = Number(invoice.total || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 });
-
   const msg = [];
 
   msg.push(`*${salon.toUpperCase()}*`);
@@ -164,58 +143,11 @@ export function formatInvoiceMessage(invoice, items = [], settings = {}, reviewU
   msg.push(``);
   msg.push(`Dear *${clientFirstName}*,`);
   msg.push(``);
-  msg.push(`Thank you for visiting us on *${visitDate}*!`);
-  msg.push(`We're thrilled to have had the pleasure of serving you.`);
+  msg.push(`Thank you for visiting us! Your feedback means the world to us.`);
   msg.push(``);
 
-  if (serviceItems.length > 0) {
-    msg.push(`*Services enjoyed:*`);
-    serviceItems.forEach((item) => {
-      const qty = Number(item.quantity || 1);
-      msg.push(`  • ${item.service_name}${qty > 1 ? ` x${qty}` : ""}`);
-    });
-  }
-
-  if (productItems.length > 0) {
-    msg.push(``);
-    msg.push(`*Products purchased:*`);
-    productItems.forEach((item) => {
-      const qty = Number(item.quantity || 1);
-      msg.push(`  • ${item.service_name}${qty > 1 ? ` x${qty}` : ""}`);
-    });
-  }
-
-  msg.push(``);
-  let paymentText = invoice.payment_method || "Cash";
-  if (invoice.payment_method === "Cash + UPI" && invoice.transaction_id?.includes("cash:")) {
-    const parts = invoice.transaction_id.split("|");
-    let c = 0, u = 0;
-    parts.forEach(p => {
-      if (p.startsWith("cash:")) c = p.replace("cash:", "");
-      if (p.startsWith("upi:")) u = p.replace("upi:", "");
-    });
-    paymentText = `Cash + UPI (Cash: Rs ${c}, UPI: Rs ${u})`;
-  }
-  msg.push(`*Amount Paid:* Rs ${totalPaid} (${paymentText})`);
-  msg.push(`*Invoice:* ${invoice.invoice_number || "—"}`);
-  msg.push(``);
-
-  if (isMember) {
-    msg.push(`*Membership:* Active Member`);
-    if (membershipEndStr) {
-      msg.push(`*Valid until:* ${membershipEndStr}`);
-    }
-    msg.push(``);
-  }
-
-  msg.push(`We look forward to seeing you again soon!`);
-  msg.push(``);
-
-  // Review CTA — only included if reviewUrl is provided
   if (reviewUrl) {
-    msg.push(`*How was your experience?*`);
-    msg.push(`Your feedback means the world to us!`);
-    msg.push(`Rate your visit (takes 10 seconds):`);
+    msg.push(`Please take 10 seconds to rate your experience:`);
     msg.push(reviewUrl);
     msg.push(``);
   }
