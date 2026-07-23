@@ -1155,8 +1155,11 @@ export async function saveStaffPayment(payload) {
     notes: payload.notes || null,
     updated_at: new Date().toISOString(),
   };
+  if (payload.id) {
+    row.id = payload.id;
+  }
   const { data, error } = await t("staff_payments")
-    .upsert(row, { onConflict: "staff_id,work_month" })
+    .upsert(row, payload.id ? { onConflict: "id" } : { onConflict: "staff_id,work_month" })
     .select()
     .single();
   if (error) throw error;

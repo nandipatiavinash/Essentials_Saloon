@@ -6,6 +6,12 @@ import { fetchInvoiceDetails, generateAndSaveReviewToken } from "../../lib/api";
 import { buildWhatsAppLink, formatInvoiceMessage } from "../../lib/whatsapp";
 import toast from "react-hot-toast";
 
+const cleanPhone = (phone = "") => {
+  const digits = String(phone).replace(/\D/g, "");
+  if (digits.length < 8) return "";
+  return digits.length > 10 ? digits.slice(-10) : digits;
+};
+
 export default function ClientsManager() {
   const { customers, invoices, settings } = useAdmin();
   const [search, setSearch] = useState("");
@@ -53,7 +59,7 @@ export default function ClientsManager() {
       setLoadingInactive(true);
       try {
         const ids = inactiveList.map(c => c.id);
-        const mobiles = inactiveList.map(c => c.mobile).filter(Boolean);
+        const mobiles = inactiveList.map(c => cleanPhone(c.mobile)).filter(Boolean);
         
         // Fetch latest invoices matching mobile numbers of inactive clients
         let invs = [];
@@ -64,7 +70,11 @@ export default function ClientsManager() {
             .in("mobile", mobiles)
             .order("billing_at", { ascending: false });
           
-          if (!error && data) {
+          if (error) {
+            console.error("Supabase invoices select error:", error.message);
+            throw error;
+          }
+          if (data) {
             invs = data;
           }
         }
@@ -75,8 +85,9 @@ export default function ClientsManager() {
         // 1. Populate from DB fetch results
         invs.forEach(inv => {
           if (inv.status !== "void") {
-            if (inv.mobile && !latestInvoiceMap[inv.mobile]) {
-              latestInvoiceMap[inv.mobile] = inv;
+            const m = cleanPhone(inv.mobile);
+            if (m && !latestInvoiceMap[m]) {
+              latestInvoiceMap[m] = inv;
             }
             if (inv.customer_id && !latestInvoiceMap[inv.customer_id]) {
               latestInvoiceMap[inv.customer_id] = inv;
@@ -87,8 +98,9 @@ export default function ClientsManager() {
         // 2. Fallback to preloaded invoices from context (in case of connection errors or limit)
         (invoices || []).forEach(inv => {
           if (inv.status !== "void") {
-            if (inv.mobile && !latestInvoiceMap[inv.mobile]) {
-              latestInvoiceMap[inv.mobile] = inv;
+            const m = cleanPhone(inv.mobile);
+            if (m && !latestInvoiceMap[m]) {
+              latestInvoiceMap[m] = inv;
             }
             if (inv.customer_id && !latestInvoiceMap[inv.customer_id]) {
               latestInvoiceMap[inv.customer_id] = inv;
@@ -98,7 +110,8 @@ export default function ClientsManager() {
         
         // Map inactive customers with their latest invoice info
         const mapped = inactiveList.map(client => {
-          const lastInvoice = latestInvoiceMap[client.id] || latestInvoiceMap[client.mobile] || null;
+          const m = cleanPhone(client.mobile);
+          const lastInvoice = latestInvoiceMap[client.id] || latestInvoiceMap[m] || null;
           
           let stylist = "—";
           let lastBillValue = 0;
