@@ -53,27 +53,52 @@ export default function ClientsManager() {
       setLoadingInactive(true);
       try {
         const ids = inactiveList.map(c => c.id);
+        const mobiles = inactiveList.map(c => c.mobile).filter(Boolean);
         
-        // Fetch latest invoices including items
-        const { data: invs, error } = await supabase
-          .from("invoices")
-          .select("*, invoice_items(*)")
-          .in("customer_id", ids)
-          .order("billing_at", { ascending: false });
+        // Fetch latest invoices matching mobile numbers of inactive clients
+        let invs = [];
+        if (mobiles.length > 0) {
+          const { data, error } = await supabase
+            .from("invoices")
+            .select("*, invoice_items(*)")
+            .in("mobile", mobiles)
+            .order("billing_at", { ascending: false });
           
-        if (error) throw error;
+          if (!error && data) {
+            invs = data;
+          }
+        }
         
-        // Group by customer_id and get the latest invoice
+        // Build latest invoice mapping (matching by mobile or customer_id)
         const latestInvoiceMap = {};
-        (invs || []).forEach(inv => {
-          if (!latestInvoiceMap[inv.customer_id] && inv.status !== "void") {
-            latestInvoiceMap[inv.customer_id] = inv;
+        
+        // 1. Populate from DB fetch results
+        invs.forEach(inv => {
+          if (inv.status !== "void") {
+            if (inv.mobile && !latestInvoiceMap[inv.mobile]) {
+              latestInvoiceMap[inv.mobile] = inv;
+            }
+            if (inv.customer_id && !latestInvoiceMap[inv.customer_id]) {
+              latestInvoiceMap[inv.customer_id] = inv;
+            }
+          }
+        });
+        
+        // 2. Fallback to preloaded invoices from context (in case of connection errors or limit)
+        (invoices || []).forEach(inv => {
+          if (inv.status !== "void") {
+            if (inv.mobile && !latestInvoiceMap[inv.mobile]) {
+              latestInvoiceMap[inv.mobile] = inv;
+            }
+            if (inv.customer_id && !latestInvoiceMap[inv.customer_id]) {
+              latestInvoiceMap[inv.customer_id] = inv;
+            }
           }
         });
         
         // Map inactive customers with their latest invoice info
         const mapped = inactiveList.map(client => {
-          const lastInvoice = latestInvoiceMap[client.id] || null;
+          const lastInvoice = latestInvoiceMap[client.id] || latestInvoiceMap[client.mobile] || null;
           
           let stylist = "—";
           let lastBillValue = 0;
@@ -115,7 +140,7 @@ export default function ClientsManager() {
     if (activeTab === "inactive") {
       fetchInactiveClientsData();
     }
-  }, [activeTab, customers]);
+  }, [activeTab, customers, invoices]);
 
   // --- TAB 2: INACTIVE CLIENTS FILTER & SORT ---
   const filteredAndSortedInactive = useMemo(() => {
