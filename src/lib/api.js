@@ -1143,6 +1143,7 @@ export async function saveStaffPayment(payload) {
     work_month: payload.work_month,
     payment_month: payload.payment_month || null,
     base_salary: Number(payload.base_salary || 0),
+    days_present: payload.days_present !== undefined && payload.days_present !== null ? Number(payload.days_present) : null,
     tips_earned: Number(payload.tips_earned || 0),
     incentives: Number(payload.incentives || 0),
     advances_deducted: Number(payload.advances_deducted || 0),

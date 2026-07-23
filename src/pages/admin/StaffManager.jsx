@@ -302,6 +302,10 @@ export default function StaffManager() {
         const monthAdvances = (staffAdvances || []).filter(a => a.staff_id === s.id && a.work_month === payrollMonth && a.status === "pending");
         const computedAdvances = monthAdvances.reduce((acc, a) => acc + Number(a.amount || 0), 0);
 
+        // Compute days present for this staff in the month
+        const staffAtt = (attendance || []).filter(a => a.staff_id === s.id && (a.date || "").slice(0, 7) === payrollMonth);
+        const computedDaysPresent = staffAtt.filter(a => a.status === "present" || a.status === "late").length;
+
         const net = Number(s.base_salary || 0) + computedTips - computedAdvances;
 
         const existingPayment = (staffPayments || []).find(p => p.staff_id === s.id && p.work_month === payrollMonth);
@@ -311,6 +315,7 @@ export default function StaffManager() {
             staff_id: s.id,
             work_month: payrollMonth,
             base_salary: s.base_salary,
+            days_present: computedDaysPresent,
             tips_earned: computedTips,
             incentives: 0,
             advances_deducted: computedAdvances,
@@ -326,6 +331,7 @@ export default function StaffManager() {
           await saveStaffPayment({
             ...existingPayment,
             base_salary: s.base_salary,
+            days_present: existingPayment.days_present !== null && existingPayment.days_present !== undefined ? existingPayment.days_present : computedDaysPresent,
             tips_earned: computedTips,
             advances_deducted: computedAdvances,
             net_payable: Number(s.base_salary || 0) + computedTips + Number(existingPayment.incentives || 0) - computedAdvances - Number(existingPayment.other_deductions || 0),
@@ -391,6 +397,7 @@ export default function StaffManager() {
       let advances = p.advances_deducted || 0;
       let tips = p.tips_earned || 0;
       let net = p.net_payable;
+      let daysPresent = p.days_present;
 
       if (p.status === "unpaid" && s) {
         // Calculate live pending advances
@@ -403,19 +410,28 @@ export default function StaffManager() {
         ));
         tips = monthTips.reduce((acc, t) => acc + Number(t.tip_amount || 0), 0);
 
+        // Calculate live days present if not saved in database yet
+        if (daysPresent === null || daysPresent === undefined) {
+          const staffAtt = (attendance || []).filter(a => a.staff_id === s.id && (a.date || "").slice(0, 7) === payrollMonth);
+          daysPresent = staffAtt.filter(a => a.status === "present" || a.status === "late").length;
+        }
+
         // Recalculate net payable dynamically
         net = Number(p.base_salary || 0) + tips + Number(p.incentives || 0) - advances - Number(p.other_deductions || 0);
+      } else {
+        daysPresent = daysPresent || 0;
       }
 
       return {
         ...p,
+        days_present: daysPresent,
         advances_deducted: advances,
         tips_earned: tips,
         net_payable: net,
         staffName: s ? s.name : "Unknown staff"
       };
     });
-  }, [staffPayments, payrollMonth, staff, staffAdvances, tipSplits, invoices]);
+  }, [staffPayments, payrollMonth, staff, staffAdvances, tipSplits, invoices, attendance]);
 
   return (
     <>
