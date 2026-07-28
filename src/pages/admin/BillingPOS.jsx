@@ -7,6 +7,7 @@ import { calculateInvoiceTotals, deleteInvoice, fetchInvoiceDetails, findCustome
 import { buildWhatsAppLink, formatInvoiceMessage } from "../../lib/whatsapp";
 import SearchableStaffDropdown from "../../components/SearchableStaffDropdown";
 import SearchableServiceDropdown from "../../components/SearchableServiceDropdown";
+import SearchableProductDropdown from "../../components/SearchableProductDropdown";
 
 
 const emptyBill = () => ({
@@ -826,23 +827,14 @@ export default function BillingPOS() {
             )}
 
             {addTab === "products" && (
-              <div className="service-picker">
-                <select 
-                  className="form-input" 
-                  value="" 
-                  onChange={(e) => { 
-                    if (e.target.value) {
-                      addProduct(e.target.value); 
-                    }
-                  }}
-                  disabled={billSaved}
-                >
-                  <option value="" disabled>Select product to sell</option>
-                  {activeInventory.map((p) => (
-                    <option key={p.id} value={p.id}>{p.name} — Rs {p.unit_price} (Stock: {p.stock_qty})</option>
-                  ))}
-                </select>
-                {activeInventory.length === 0 && <span style={{ fontSize: "0.72rem", color: "#b71c1c", alignSelf: "center" }}>No products in stock</span>}
+              <div className="service-picker" style={{ width: "100%", display: "block" }}>
+                <SearchableProductDropdown 
+                  productsList={activeInventory} 
+                  value={""} 
+                  onChange={addProduct} 
+                  disabled={billSaved} 
+                />
+                {activeInventory.length === 0 && <span style={{ fontSize: "0.72rem", color: "#b71c1c", alignSelf: "center", marginTop: "0.5rem", display: "inline-block" }}>No products in stock</span>}
               </div>
             )}
 
