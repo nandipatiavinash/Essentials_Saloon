@@ -41,7 +41,13 @@ export default function ClientsManager() {
   }, [customers, search, sortOrder]);
 
   const selected = filteredAndSortedAll.find((client) => client.id === selectedId) || filteredAndSortedAll[0];
-  const clientInvoices = (invoices || []).filter((invoice) => invoice.customer_id === selected?.id);
+  const clientInvoices = useMemo(() => {
+    if (!selected) return [];
+    const selMobile = cleanPhone(selected.mobile);
+    return (invoices || []).filter((invoice) => 
+      invoice.customer_id === selected.id || (selMobile && cleanPhone(invoice.mobile) === selMobile)
+    );
+  }, [invoices, selected]);
   const repeatClients = (customers || []).filter((client) => Number(client.visit_count || 0) > 1).length;
 
   // --- TAB 2: FETCH INACTIVE CLIENTS HISTORY (45+ Days) ---

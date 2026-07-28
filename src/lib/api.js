@@ -1155,13 +1155,18 @@ export async function saveStaffPayment(payload) {
     notes: payload.notes || null,
     updated_at: new Date().toISOString(),
   };
+  
+  let query;
   if (payload.id) {
-    row.id = payload.id;
+    query = t("staff_payments")
+      .update(row)
+      .eq("id", payload.id);
+  } else {
+    query = t("staff_payments")
+      .upsert(row, { onConflict: "staff_id,work_month" });
   }
-  const { data, error } = await t("staff_payments")
-    .upsert(row, payload.id ? { onConflict: "id" } : { onConflict: "staff_id,work_month" })
-    .select()
-    .single();
+  
+  const { data, error } = await query.select().single();
   if (error) throw error;
   return data;
 }

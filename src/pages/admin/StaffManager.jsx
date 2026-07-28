@@ -87,20 +87,26 @@ export default function StaffManager() {
     if (!original) return;
 
     setSaving(true);
+    const payload = {
+      ...original,
+      base_salary: Number(draft.base_salary),
+      days_present: Number(draft.days_present),
+      tips_earned: Number(draft.tips_earned),
+      incentives: Number(draft.incentives),
+      advances_deducted: Number(draft.advances_deducted),
+      other_deductions: Number(draft.other_deductions),
+      net_payable: Number(draft.net_payable),
+      scheduled_payment_date: draft.scheduled_payment_date,
+      notes: draft.notes
+    };
+
+    console.log("handleSaveDraftRow: draft =", draft);
+    console.log("handleSaveDraftRow: original =", original);
+    console.log("handleSaveDraftRow: saving payload =", payload);
+
     try {
-      await saveStaffPayment({
-        ...original,
-        base_salary: Number(draft.base_salary),
-        days_present: Number(draft.days_present),
-        tips_earned: Number(draft.tips_earned),
-        incentives: Number(draft.incentives),
-        advances_deducted: Number(draft.advances_deducted),
-        other_deductions: Number(draft.other_deductions),
-        net_payable: Number(draft.net_payable),
-        scheduled_payment_date: draft.scheduled_payment_date,
-        notes: draft.notes
-      });
-      
+      const result = await saveStaffPayment(payload);
+      console.log("handleSaveDraftRow: save success result =", result);
       toast.success("Worksheet row updated successfully!");
       setDraftPayments(prev => {
         const copy = { ...prev };
@@ -109,7 +115,11 @@ export default function StaffManager() {
       });
       reload();
     } catch (err) {
-      toast.error(err.message || "Failed to update worksheet row");
+      console.error("handleSaveDraftRow: save failed with error =", err);
+      const errMsg = err.message || "Failed to update worksheet row";
+      const errDetails = err.details ? ` (${err.details})` : "";
+      const errHint = err.hint ? ` [Hint: ${err.hint}]` : "";
+      toast.error(`${errMsg}${errDetails}${errHint}`, { duration: 6000 });
     } finally {
       setSaving(false);
     }
@@ -343,7 +353,11 @@ export default function StaffManager() {
       toast.success(`Worksheet generated! Created ${count} and synced ${updatedCount} records.`);
       reload();
     } catch (err) {
-      toast.error(err.message || "Failed to generate worksheet");
+      console.error("handleGenerateWorksheet: failed with error =", err);
+      const errMsg = err.message || "Failed to generate worksheet";
+      const errDetails = err.details ? ` (${err.details})` : "";
+      const errHint = err.hint ? ` [Hint: ${err.hint}]` : "";
+      toast.error(`${errMsg}${errDetails}${errHint}`, { duration: 6000 });
     } finally {
       setSaving(false);
     }
