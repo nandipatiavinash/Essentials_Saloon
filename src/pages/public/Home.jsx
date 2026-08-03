@@ -55,7 +55,6 @@ export default function Home() {
             <Link to="/services" className="btn-outline">Explore Services</Link>
           </motion.div>
         </div>
-        <div className="hero-scroll">Scroll to explore</div>
       </section>
 
       {/* GOOGLE MAPS & INSTAGRAM TRUST BANNER */}
