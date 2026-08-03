@@ -1,4 +1,4 @@
-import { Outlet, NavLink, useNavigate } from "react-router-dom";
+import { Outlet, NavLink, useNavigate, useLocation } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { MapPin } from "lucide-react";
 
@@ -36,6 +36,12 @@ export default function PublicLayout() {
   const [bookingOpen, setBookingOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const navigate = useNavigate();
+  const { pathname } = useLocation();
+
+  // Scroll to top whenever route changes
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [pathname]);
 
   useEffect(() => {
     fetchPublicData()
@@ -86,14 +92,9 @@ export default function PublicLayout() {
   return (
     <DataCtx.Provider value={{ ...data, openBooking: () => setBookingOpen(true) }}>
       <nav className="nav">
-        <NavLink to="/" className="nav-logo" style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--gold)" }}>
-            <circle cx="6" cy="6" r="3"></circle>
-            <circle cx="6" cy="18" r="3"></circle>
-            <line x1="9.8" y1="8.2" x2="22" y2="20"></line>
-            <line x1="9.8" y1="15.8" x2="22" y2="4"></line>
-          </svg>
-          <span>Toni & Guy Essensuals <em style={{ fontStyle: "normal", color: "var(--white)" }}>Gorantla</em></span>
+        <NavLink to="/" className="nav-logo-wrap">
+          <img src="/logo-white.png" alt="Toni & Guy Essensuals Hairdressing" className="nav-logo-img" />
+          <span className="nav-location-tag">Gorantla</span>
         </NavLink>
         <ul className="nav-links">
           {navLinks.map(l => (
@@ -123,14 +124,17 @@ export default function PublicLayout() {
         <button className="btn-gold" onClick={() => { setMobileOpen(false); setBookingOpen(true); }}>Book Now</button>
       </div>
 
-      <main style={{ paddingTop: "68px" }}>
+      <main style={{ paddingTop: "76px" }}>
         <Outlet />
       </main>
 
       <footer className="footer">
         <div className="footer-top">
           <div>
-            <div className="footer-brand">Toni & Guy Essensuals<span style={{ color: "var(--gold)" }}> Gorantla</span></div>
+            <div className="footer-brand" style={{ display: "flex", alignItems: "center", gap: "0.85rem", marginBottom: "1rem" }}>
+              <img src="/logo-white.png" alt="Toni & Guy Essensuals Hairdressing" style={{ height: "42px", width: "auto" }} />
+              <span className="nav-location-tag">Gorantla</span>
+            </div>
             <div className="footer-tagline">A premium luxury salon experience in Guntur. A franchisee of Toni&Guy Essensuals UK.</div>
           </div>
           <div>
