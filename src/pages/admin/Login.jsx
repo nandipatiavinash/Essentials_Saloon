@@ -34,8 +34,10 @@ export default function Login() {
   return (
     <div className="admin-login">
       <div className="login-card">
-        <div className="login-logo">Essensuals<span>.</span></div>
-        <div className="login-sub">Workspace</div>
+        <div className="login-logo">Toni & Guy Essensuals</div>
+        <div className="login-sub" style={{ fontSize: "0.68rem", letterSpacing: "0.15em", textTransform: "uppercase", color: "var(--gold)", margin: "0.4rem 0 1.5rem 0" }}>
+          Internal Staff Portal — Gorantla Branch
+        </div>
 
         {sessionExpired && (
           <div
@@ -55,27 +57,44 @@ export default function Login() {
           </div>
         )}
 
-        <form onSubmit={handleLogin}>
-          <input
-            className="login-input"
-            type="email"
-            placeholder="Admin Email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-          />
-          <input
-            className="login-input"
-            type="password"
-            placeholder="Password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-          />
+        <form onSubmit={handleLogin} autoComplete="on">
+          <div style={{ marginBottom: "1rem" }}>
+            <label style={{ display: "block", fontSize: "0.65rem", textTransform: "uppercase", letterSpacing: "0.1em", color: "#aaa", marginBottom: "0.3rem", textAlign: "left" }}>
+              Authorized Staff Email
+            </label>
+            <input
+              className="login-input"
+              type="email"
+              name="staff-email"
+              autoComplete="username"
+              placeholder="staff@toniandguy-gorantla.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+            />
+          </div>
+          <div style={{ marginBottom: "1.5rem" }}>
+            <label style={{ display: "block", fontSize: "0.65rem", textTransform: "uppercase", letterSpacing: "0.1em", color: "#aaa", marginBottom: "0.3rem", textAlign: "left" }}>
+              Staff Password
+            </label>
+            <input
+              className="login-input"
+              type="password"
+              name="staff-password"
+              autoComplete="current-password"
+              placeholder="••••••••"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+            />
+          </div>
           <button className="login-btn" type="submit" disabled={loading}>
-            {loading ? "Authenticating..." : "Sign In"}
+            {loading ? "Authenticating..." : "Sign In to Staff Portal"}
           </button>
         </form>
+        <div style={{ fontSize: "0.6rem", color: "#888", marginTop: "1.5rem", textAlign: "center" }}>
+          Authorized Salon Staff Management System • Gorantla Guntur
+        </div>
       </div>
     </div>
   );
