@@ -2,8 +2,8 @@ import { useState } from "react";
 import { createBooking } from "../lib/api";
 import toast from "react-hot-toast";
 
-export default function BookingModal({ services, onClose, onSubmit }) {
-  const [form, setForm] = useState({ name: "", phone: "", service: "", date: "", time: "", notes: "" });
+export default function BookingModal({ services = [], onClose, onSubmit, initialService = "" }) {
+  const [form, setForm] = useState({ name: "", phone: "", service: initialService || "", date: "", time: "", notes: "" });
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
 
@@ -54,7 +54,10 @@ export default function BookingModal({ services, onClose, onSubmit }) {
                 <label className="form-label">Service</label>
                 <select className="form-input" value={form.service} onChange={e => set("service", e.target.value)}>
                   <option value="">Select a service (optional)</option>
-                  {services.filter(s => s.active).map(s => (
+                  {initialService && !services.some(s => s.name === initialService) && (
+                    <option value={initialService}>{initialService}</option>
+                  )}
+                  {services.filter(s => s.active !== false).map(s => (
                     <option key={s.id} value={s.name}>{s.name}</option>
                   ))}
                 </select>

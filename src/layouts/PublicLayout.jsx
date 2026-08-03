@@ -34,9 +34,15 @@ export default function PublicLayout() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [bookingOpen, setBookingOpen] = useState(false);
+  const [selectedService, setSelectedService] = useState("");
   const [mobileOpen, setMobileOpen] = useState(false);
   const navigate = useNavigate();
   const { pathname } = useLocation();
+
+  const handleOpenBooking = (svcName) => {
+    setSelectedService(typeof svcName === "string" ? svcName : "");
+    setBookingOpen(true);
+  };
 
   // Scroll to top whenever route changes
   useEffect(() => {
@@ -90,7 +96,7 @@ export default function PublicLayout() {
   ];
 
   return (
-    <DataCtx.Provider value={{ ...data, openBooking: () => setBookingOpen(true) }}>
+    <DataCtx.Provider value={{ ...data, openBooking: handleOpenBooking }}>
       <nav className="nav">
         <NavLink to="/" className="nav-logo-wrap">
           <img src="/logo-white.png" alt="Toni & Guy Essensuals Hairdressing" className="nav-logo-img" />
@@ -105,7 +111,7 @@ export default function PublicLayout() {
             </li>
           ))}
         </ul>
-        <button className="nav-cta" onClick={() => setBookingOpen(true)}>Book Now</button>
+        <button className="nav-cta" onClick={() => handleOpenBooking()}>Book Now</button>
         <button className="nav-mobile-btn" onClick={() => setMobileOpen(true)} aria-label="Open menu">
           <svg width="22" height="16" viewBox="0 0 22 16" fill="none" stroke="currentColor" strokeWidth="2">
             <line x1="0" y1="1" x2="22" y2="1"/><line x1="0" y1="8" x2="22" y2="8"/><line x1="0" y1="15" x2="22" y2="15"/>
@@ -121,7 +127,7 @@ export default function PublicLayout() {
             {l.label}
           </NavLink>
         ))}
-        <button className="btn-gold" onClick={() => { setMobileOpen(false); setBookingOpen(true); }}>Book Now</button>
+        <button className="btn-gold" onClick={() => { setMobileOpen(false); handleOpenBooking(); }}>Book Now</button>
       </div>
 
       <main style={{ paddingTop: "76px" }}>
@@ -169,12 +175,13 @@ export default function PublicLayout() {
         </div>
       </footer>
 
-      <button className="sticky-book" onClick={() => setBookingOpen(true)}>Book Now</button>
+      <button className="sticky-book" onClick={() => handleOpenBooking()}>Book Now</button>
 
       {bookingOpen && (
         <BookingModal
           services={data.services}
-          onClose={() => setBookingOpen(false)}
+          initialService={selectedService}
+          onClose={() => { setBookingOpen(false); setSelectedService(""); }}
           onSubmit={handleBook}
         />
       )}

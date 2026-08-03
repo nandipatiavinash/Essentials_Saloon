@@ -104,7 +104,7 @@ export default function Home() {
                 <div className="badge-featured" style={{ background: "rgba(201,185,154,0.15)", color: "var(--gold)", border: "1px solid rgba(201,185,154,0.3)" }}>{cat.tag}</div>
                 <div className="service-name" style={{ fontSize: "1.2rem", marginTop: "0.4rem" }}>{cat.title}</div>
                 <div className="service-desc">{cat.desc}</div>
-                <button className="btn-outline" style={{ marginTop: "1rem", width: "100%", padding: "0.5rem", fontSize: "0.62rem", justifyContent: "center" }} onClick={openBooking}>
+                <button className="btn-outline" style={{ marginTop: "1rem", width: "100%", padding: "0.5rem", fontSize: "0.62rem", justifyContent: "center" }} onClick={() => openBooking(cat.title)}>
                   Book Appointment
                 </button>
               </div>
@@ -157,10 +157,13 @@ export default function Home() {
                   <div className="service-cat">{categories?.find(c => c.slug === s.category)?.name || s.category}</div>
                   <div className="service-name">{s.name}</div>
                   <div className="service-desc">{s.description}</div>
-                  <div className="service-meta">
+                  <div className="service-meta" style={{ marginBottom: "1rem" }}>
                     <div className="service-price"><span>from</span>₹{s.price_from}</div>
                     <div className="service-dur">{s.duration}</div>
                   </div>
+                  <button className="btn-primary" style={{ width: "100%", padding: "0.6rem", fontSize: "0.62rem", justifyContent: "center" }} onClick={() => openBooking(s.name)}>
+                    Book This Service
+                  </button>
                 </div>
               </motion.div>
             ))}
