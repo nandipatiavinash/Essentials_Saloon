@@ -177,10 +177,11 @@ export default function BillingPOS() {
       const customer = await findCustomerByPhone(bill.mobile);
       if (customer) {
         setBill((current) => {
+          const isCustMemberActive = customer.is_member && getDaysRemaining(customer.membership_end) > 0;
           const updatedItems = current.items.map(item => {
             if (item.item_type === "product") return item;
             const svc = activeServices.find(s => String(s.id) === String(item.service_id));
-            if (svc && customer.is_member && svc.member_price != null && svc.member_price > 0) {
+            if (svc && isCustMemberActive && svc.member_price != null && svc.member_price > 0) {
               return { ...item, price: svc.member_price };
             }
             return item;
@@ -209,8 +210,9 @@ export default function BillingPOS() {
     const service = activeServices.find((svc) => String(svc.id) === String(serviceId));
     if (!service) return;
     setBill((current) => {
+      const currentIsMemberActive = current.is_member_signup || (current.is_member && getDaysRemaining(current.membership_end) > 0);
       let price = Number(service.price_from || 0);
-      if (current.is_member && service.member_price != null && service.member_price > 0) {
+      if (currentIsMemberActive && service.member_price != null && service.member_price > 0) {
         price = Number(service.member_price);
       }
       
@@ -267,6 +269,63 @@ export default function BillingPOS() {
         items: newItems,
       };
     });
+  };
+
+  const handleRenewMembership = () => {
+    setBill((current) => {
+      let updatedItems = [...current.items];
+      const hasMem = updatedItems.some(item => item.item_type === "membership");
+      if (!hasMem) {
+        updatedItems.push({
+          item_type: "membership",
+          service_name: "Membership Signup",
+          quantity: 1,
+          price: 100,
+          staff_name: current.staff_name || "",
+        });
+      }
+
+      // Update pricing for existing services to member price
+      updatedItems = updatedItems.map(item => {
+        if (item.item_type === "product" || item.item_type === "membership") return item;
+        const svc = activeServices.find(s => String(s.id) === String(item.service_id));
+        if (svc && svc.member_price != null && svc.member_price > 0) {
+          return { ...item, price: svc.member_price };
+        }
+        return item;
+      });
+
+      return {
+        ...current,
+        is_member: true,
+        is_member_signup: true,
+        membership_tier: "Member",
+        items: updatedItems,
+      };
+    });
+    toast.success("Membership renewal added to bill. Member prices applied.");
+  };
+
+  const handleCancelRenewal = () => {
+    setBill((current) => {
+      let updatedItems = current.items.filter(item => item.item_type !== "membership");
+      // Revert pricing for existing services to regular price
+      updatedItems = updatedItems.map(item => {
+        if (item.item_type === "product" || item.item_type === "membership") return item;
+        const svc = activeServices.find(s => String(s.id) === String(item.service_id));
+        if (svc) {
+          return { ...item, price: Number(svc.price_from || 0) };
+        }
+        return item;
+      });
+
+      return {
+        ...current,
+        is_member_signup: false,
+        items: updatedItems,
+      };
+    });
+    toast.success("Membership renewal removed.");
   };
 
   const handleAddCustomItem = (e) => {
@@ -605,6 +664,7 @@ export default function BillingPOS() {
       mobile: invoiceData.mobile,
       customer_notes: invoiceData.customer?.notes || "",
       is_member: !!invoiceData.customer?.is_member,
+      is_member_signup: loadedItems.some(i => i.item_type === "membership"),
       membership_tier: invoiceData.customer?.membership_tier || "Member",
       membership_id: invoiceData.customer?.membership_id || "",
       membership_end: invoiceData.customer?.membership_end || "",
@@ -667,6 +727,9 @@ export default function BillingPOS() {
   };
 
 
+  const daysRemaining = bill.membership_end ? getDaysRemaining(bill.membership_end) : 0;
+  const isMemberActive = bill.is_member_signup || (bill.is_member && daysRemaining > 0);
+
   return (
     <div className="pos-grid">
       <form className="pos-panel" onSubmit={submitBill}>
@@ -725,15 +788,39 @@ export default function BillingPOS() {
               </div>
             </div>
             {bill.is_member ? (
-              <div style={{ marginTop: "0.75rem", padding: "0.75rem 1rem", background: "rgba(201,185,154,0.08)", border: "1px solid rgba(201,185,154,0.3)", color: "#c9b99a", fontSize: "0.72rem", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <div>
-                  <strong>★ Active Member</strong>
-                  {bill.membership_id && <span style={{ marginLeft: "10px", opacity: 0.8 }}>ID: {bill.membership_id}</span>}
+              bill.is_member_signup ? (
+                <div style={{ marginTop: "0.75rem", padding: "0.75rem 1rem", background: "rgba(46,125,50,0.08)", border: "1px solid rgba(46,125,50,0.3)", color: "#2e7d32", fontSize: "0.72rem", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div>
+                    <strong>★ Membership Renewing</strong>
+                    {bill.membership_id && <span style={{ marginLeft: "10px", opacity: 0.8 }}>ID: {bill.membership_id}</span>}
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                    <span>Expires: 365 days from billing date</span>
+                    <button type="button" className="tbl-btn" onClick={handleCancelRenewal} style={{ padding: "2px 6px", fontSize: "0.65rem", background: "rgba(183,28,28,0.1)", color: "#b71c1c", border: "1px solid rgba(183,28,28,0.2)" }}>Cancel Renewal</button>
+                  </div>
                 </div>
-                {bill.membership_end && (
-                  <div>Expires: {safeParseDate(bill.membership_end).toLocaleDateString("en-IN")} <span style={{ marginLeft: "8px", fontWeight: "bold" }}>({getDaysRemaining(bill.membership_end)} days left)</span></div>
-                )}
-              </div>
+              ) : daysRemaining > 0 ? (
+                <div style={{ marginTop: "0.75rem", padding: "0.75rem 1rem", background: "rgba(201,185,154,0.08)", border: "1px solid rgba(201,185,154,0.3)", color: "#c9b99a", fontSize: "0.72rem", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div>
+                    <strong>★ Active Member</strong>
+                    {bill.membership_id && <span style={{ marginLeft: "10px", opacity: 0.8 }}>ID: {bill.membership_id}</span>}
+                  </div>
+                  {bill.membership_end && (
+                    <div>Expires: {safeParseDate(bill.membership_end).toLocaleDateString("en-IN")} <span style={{ marginLeft: "8px", fontWeight: "bold" }}>({daysRemaining} days left)</span></div>
+                  )}
+                </div>
+              ) : (
+                <div style={{ marginTop: "0.75rem", padding: "0.75rem 1rem", background: "rgba(183,28,28,0.08)", border: "1px solid rgba(183,28,28,0.3)", color: "#b71c1c", fontSize: "0.72rem", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div>
+                    <strong>⚠️ Membership Expired</strong>
+                    {bill.membership_id && <span style={{ marginLeft: "10px", opacity: 0.8 }}>ID: {bill.membership_id}</span>}
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                    <span>Expired on: {safeParseDate(bill.membership_end).toLocaleDateString("en-IN")} ({Math.abs(daysRemaining)} days ago)</span>
+                    <button type="button" className="btn-add" onClick={handleRenewMembership} style={{ padding: "4px 8px", fontSize: "0.68rem" }}>🔄 Renew Membership</button>
+                  </div>
+                </div>
+              )
             ) : (
               <div style={{ marginTop: "0.75rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
                 <input 
@@ -821,7 +908,7 @@ export default function BillingPOS() {
                   value={""} 
                   onChange={addService} 
                   disabled={billSaved} 
-                  isMember={bill.is_member} 
+                  isMember={isMemberActive} 
                 />
               </div>
             )}
@@ -1092,7 +1179,7 @@ export default function BillingPOS() {
           <div className="invoice-client">
             <div>
               {bill.client_name || invoice?.client_name || "Client"}
-              {bill.is_member && (
+              {isMemberActive && (
                 <span style={{ marginLeft: "8px", background: "#c9b99a", color: "#0d0d0d", fontSize: "0.55rem", padding: "2px 6px", fontWeight: "bold", borderRadius: "2px", textTransform: "uppercase" }}>★ Member</span>
               )}
             </div>

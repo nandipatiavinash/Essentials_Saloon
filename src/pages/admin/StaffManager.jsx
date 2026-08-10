@@ -239,18 +239,42 @@ export default function StaffManager() {
 
       const uniqueClients = new Set(staffInvoices.map(inv => inv.customer_id)).size;
 
-      // Net sales (share of service items served by this staff)
-      let netSales = 0;
+      // Net sales (split by services, products, totals)
+      let serviceSales = 0;
+      let productSales = 0;
+      let servicesCount = 0;
+
       staffInvoices.forEach(inv => {
+        const discountPct = (Number(inv.subtotal || 0) + Number(inv.discount || 0)) > 0
+          ? (Number(inv.discount || 0) / (Number(inv.subtotal || 0) + Number(inv.discount || 0)))
+          : 0;
+
         (inv.invoice_items || []).forEach(item => {
           const itemStaff = item.staff_name || inv.staff_name;
           if (itemStaff === s.name) {
-            // Net price (GST excluded if inclusive)
-            const price = item.item_type === "service" && item.tax_inclusive !== false ? (Number(item.price || 0) / 1.05) : Number(item.price || 0);
-            netSales += price * Number(item.quantity || 1);
+            const qty = Number(item.quantity || 1);
+            const price = Number(item.price || 0);
+            const rawTotal = qty * price;
+
+            if (item.item_type === "product") {
+              const itemDiscount = rawTotal * discountPct;
+              productSales += (rawTotal - itemDiscount);
+            } else if (item.item_type === "membership") {
+              const itemDiscount = rawTotal * discountPct;
+              serviceSales += (rawTotal - itemDiscount);
+              servicesCount += qty;
+            } else {
+              // service
+              const isInclusive = item.tax_inclusive !== false;
+              const rawBase = isInclusive ? (rawTotal / 1.05) : rawTotal;
+              const itemDiscount = rawBase * discountPct;
+              serviceSales += (rawBase - itemDiscount);
+              servicesCount += qty;
+            }
           }
         });
       });
+      const totalSales = serviceSales + productSales;
 
       // Tips from splits
       const staffTips = (tipSplits || []).filter(ts => ts.staff_name === s.name && (
@@ -263,9 +287,11 @@ export default function StaffManager() {
         ...s,
         presentCount,
         hoursWorked,
-        servicesCount: staffInvoices.length,
+        servicesCount,
         uniqueClients,
-        netSales: Math.round(netSales),
+        serviceSales: Math.round(serviceSales),
+        productSales: Math.round(productSales),
+        totalSales: Math.round(totalSales),
         totalTips
       };
     });
@@ -564,7 +590,9 @@ export default function StaffManager() {
                   <th style={{ textAlign: "center" }}>Hours Logged</th>
                   <th style={{ textAlign: "center" }}>Services Rendered</th>
                   <th style={{ textAlign: "center" }}>Unique Clients</th>
-                  <th style={{ textAlign: "right" }}>Net Sales Volume</th>
+                  <th style={{ textAlign: "right" }}>Service Sales</th>
+                  <th style={{ textAlign: "right" }}>Product Sales</th>
+                  <th style={{ textAlign: "right" }}>Total Sales</th>
                   <th style={{ textAlign: "right" }}>Tips Earned</th>
                 </tr>
               </thead>
@@ -577,7 +605,9 @@ export default function StaffManager() {
                     <td style={{ textAlign: "center" }}>{s.hoursWorked} hrs</td>
                     <td style={{ textAlign: "center" }}>{s.servicesCount}</td>
                     <td style={{ textAlign: "center" }}>{s.uniqueClients}</td>
-                    <td style={{ textAlign: "right", fontWeight: "bold" }}>Rs {s.netSales.toLocaleString("en-IN")}</td>
+                    <td style={{ textAlign: "right" }}>Rs {s.serviceSales.toLocaleString("en-IN")}</td>
+                    <td style={{ textAlign: "right" }}>Rs {s.productSales.toLocaleString("en-IN")}</td>
+                    <td style={{ textAlign: "right", fontWeight: "bold" }}>Rs {s.totalSales.toLocaleString("en-IN")}</td>
                     <td style={{ textAlign: "right", color: s.totalTips > 0 ? "var(--gold)" : "inherit" }}>Rs {s.totalTips.toLocaleString("en-IN")}</td>
                   </tr>
                 ))}

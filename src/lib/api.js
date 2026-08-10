@@ -307,6 +307,14 @@ export async function saveInvoice(payload) {
     mEnd = existingCust.membership_end;
   }
 
+  if (payload.is_member_signup) {
+    isMember = true;
+    mStart = parseDateOrIST(payload.billing_at).toISOString().slice(0, 10);
+    const nextYear = parseDateOrIST(payload.billing_at);
+    nextYear.setFullYear(nextYear.getFullYear() + 1);
+    mEnd = nextYear.toISOString().slice(0, 10);
+  }
+
   if (isMember) {
     if (!mId) {
       const year = parseDateOrIST(payload.billing_at).getFullYear();
