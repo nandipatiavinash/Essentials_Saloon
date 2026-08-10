@@ -245,8 +245,8 @@ export default function StaffManager() {
       let servicesCount = 0;
 
       staffInvoices.forEach(inv => {
-        const discountPct = (Number(inv.subtotal || 0) + Number(inv.discount || 0)) > 0
-          ? (Number(inv.discount || 0) / (Number(inv.subtotal || 0) + Number(inv.discount || 0)))
+        const discountPct = Number(inv.subtotal || 0) > 0
+          ? (Number(inv.discount || 0) / Number(inv.subtotal || 0))
           : 0;
 
         (inv.invoice_items || []).forEach(item => {

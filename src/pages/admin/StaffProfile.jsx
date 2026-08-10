@@ -81,8 +81,8 @@ export default function StaffProfile() {
     invoicesForStaff.forEach(inv => {
       clientSet.add(inv.customer_id || inv.mobile);
 
-      const discountPct = (Number(inv.subtotal || 0) + Number(inv.discount || 0)) > 0
-        ? (Number(inv.discount || 0) / (Number(inv.subtotal || 0) + Number(inv.discount || 0)))
+      const discountPct = Number(inv.subtotal || 0) > 0
+        ? (Number(inv.discount || 0) / Number(inv.subtotal || 0))
         : 0;
 
       (inv.invoice_items || []).forEach(item => {
@@ -153,8 +153,8 @@ export default function StaffProfile() {
       const month = (inv.billing_at || inv.created_at || "").slice(0, 7);
       if (!month) return;
 
-      const discountPct = (Number(inv.subtotal || 0) + Number(inv.discount || 0)) > 0
-        ? (Number(inv.discount || 0) / (Number(inv.subtotal || 0) + Number(inv.discount || 0)))
+      const discountPct = Number(inv.subtotal || 0) > 0
+        ? (Number(inv.discount || 0) / Number(inv.subtotal || 0))
         : 0;
 
       (inv.invoice_items || []).forEach(item => {
@@ -431,8 +431,8 @@ export default function StaffProfile() {
           <tbody>
             {invoicesForStaff.slice(0, 100).map(inv => {
               const mName = member.name.trim().toLowerCase();
-              const discountPct = (Number(inv.subtotal || 0) + Number(inv.discount || 0)) > 0
-                ? (Number(inv.discount || 0) / (Number(inv.subtotal || 0) + Number(inv.discount || 0)))
+              const discountPct = Number(inv.subtotal || 0) > 0
+                ? (Number(inv.discount || 0) / Number(inv.subtotal || 0))
                 : 0;
 
               let staffNet = 0;
