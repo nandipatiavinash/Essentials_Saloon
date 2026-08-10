@@ -250,16 +250,20 @@ export default function StaffProfile() {
             <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
               <button type="button" className="tbl-btn" style={{ padding: "0.25rem" }} onClick={() => {
                 const [y, m] = selectedMonth.split("-").map(Number);
-                const prev = new Date(y, m - 2, 1).toISOString().slice(0, 7);
-                setSelectedMonth(prev);
+                const date = new Date(y, m - 2, 1);
+                const newY = date.getFullYear();
+                const newM = String(date.getMonth() + 1).padStart(2, "0");
+                setSelectedMonth(`${newY}-${newM}`);
               }}><ChevronLeft size={14} /></button>
               <span style={{ fontSize: "0.82rem", fontWeight: "bold", minWidth: 100, textAlign: "center" }}>
                 {new Date(Number(selectedMonth.split("-")[0]), Number(selectedMonth.split("-")[1]) - 1, 1).toLocaleDateString("en-IN", { month: "long", year: "numeric" })}
               </span>
               <button type="button" className="tbl-btn" style={{ padding: "0.25rem" }} onClick={() => {
                 const [y, m] = selectedMonth.split("-").map(Number);
-                const next = new Date(y, m, 1).toISOString().slice(0, 7);
-                setSelectedMonth(next);
+                const date = new Date(y, m, 1);
+                const newY = date.getFullYear();
+                const newM = String(date.getMonth() + 1).padStart(2, "0");
+                setSelectedMonth(`${newY}-${newM}`);
               }}><ChevronRight size={14} /></button>
             </div>
           ) : (
