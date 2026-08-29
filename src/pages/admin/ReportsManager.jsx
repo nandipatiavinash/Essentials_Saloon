@@ -80,7 +80,7 @@ export default function ReportsManager() {
       }
 
       (inv.invoice_items || []).forEach((item) => {
-        const itemStaff = item.staff_name || inv.staff_name || "Unknown Stylist";
+        const itemStaff = (item.staff_name || inv.staff_name || "Unknown Stylist").trim();
         const itemType = item.item_type || "service";
         const qty = Number(item.quantity || 1);
         const itemVal = qty * Number(item.price || 0);
@@ -113,7 +113,7 @@ export default function ReportsManager() {
         staffStats[itemStaff].total += itemVal;
       });
 
-      const mainStylist = inv.staff_name || "Unknown Stylist";
+      const mainStylist = (inv.staff_name || "Unknown Stylist").trim();
       if (mainStylist) {
         if (!staffStats[mainStylist]) {
           staffStats[mainStylist] = { clients: new Set(), netServices: 0, products: 0, tips: 0, total: 0 };
@@ -917,7 +917,7 @@ export default function ReportsManager() {
       dailyMap[day].bills += 1;
 
       // Staff & items
-      const mainStylist = inv.staff_name || "Unknown";
+      const mainStylist = (inv.staff_name || "Unknown").trim();
       if (!staffMap[mainStylist]) staffMap[mainStylist] = { bills: 0, services: 0, products: 0, tips: 0, total: 0 };
       staffMap[mainStylist].bills += 1;
       staffMap[mainStylist].tips += tip;
@@ -927,7 +927,7 @@ export default function ReportsManager() {
 
         const qty = Number(item.quantity || 1);
         const val = qty * Number(item.price || 0);
-        const itemStaff = item.staff_name || mainStylist;
+        const itemStaff = (item.staff_name || inv.staff_name || "Unknown").trim();
         if (!staffMap[itemStaff]) staffMap[itemStaff] = { bills: 0, services: 0, products: 0, tips: 0, total: 0 };
         if (item.item_type === "product") {
           staffMap[itemStaff].products += val;

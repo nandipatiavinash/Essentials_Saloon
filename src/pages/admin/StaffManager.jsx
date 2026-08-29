@@ -212,6 +212,8 @@ export default function StaffManager() {
     };
 
     return list.map(s => {
+      const sNameNorm = (s.name || "").trim().toLowerCase();
+
       // Days present
       const staffAtt = (attendance || []).filter(a => a.staff_id === s.id && isInPeriod(a.date));
       const presentCount = staffAtt.filter(a => a.status === "present" || a.status === "late").length;
@@ -232,8 +234,8 @@ export default function StaffManager() {
       const staffInvoices = (invoices || []).filter(inv => {
         if (inv.status === "void" || !isInPeriod(inv.billing_at)) return false;
         // Served as main staff or line-item staff
-        const hasMain = inv.staff_name === s.name;
-        const hasLine = (inv.invoice_items || []).some(item => item.staff_name === s.name);
+        const hasMain = inv.staff_name && inv.staff_name.trim().toLowerCase() === sNameNorm;
+        const hasLine = (inv.invoice_items || []).some(item => item.staff_name && item.staff_name.trim().toLowerCase() === sNameNorm);
         return hasMain || hasLine;
       });
 
@@ -251,7 +253,8 @@ export default function StaffManager() {
 
         (inv.invoice_items || []).forEach(item => {
           const itemStaff = item.staff_name || inv.staff_name;
-          if (itemStaff === s.name) {
+          const itemStaffNorm = (itemStaff || "").trim().toLowerCase();
+          if (itemStaffNorm === sNameNorm) {
             const qty = Number(item.quantity || 1);
             const price = Number(item.price || 0);
             const rawTotal = qty * price;
@@ -277,7 +280,7 @@ export default function StaffManager() {
       const totalSales = serviceSales + productSales;
 
       // Tips from splits
-      const staffTips = (tipSplits || []).filter(ts => ts.staff_name === s.name && (
+      const staffTips = (tipSplits || []).filter(ts => ts.staff_name && ts.staff_name.trim().toLowerCase() === sNameNorm && (
         // Find matching invoice to verify date
         (invoices || []).some(inv => inv.id === ts.invoice_id && isInPeriod(inv.billing_at))
       ));
@@ -300,7 +303,7 @@ export default function StaffManager() {
   // Performance staff sub-ledger
   const staffPerformanceInvoices = useMemo(() => {
     if (!selectedPerformanceStaff) return [];
-    const sName = selectedPerformanceStaff.name;
+    const sNameNorm = (selectedPerformanceStaff.name || "").trim().toLowerCase();
     const isInPeriod = (dateStr) => {
       if (!dateStr) return false;
       const d = dateStr.slice(0, 10);
@@ -312,8 +315,8 @@ export default function StaffManager() {
     };
     return (invoices || []).filter(inv => {
       if (inv.status === "void" || !isInPeriod(inv.billing_at)) return false;
-      const hasMain = inv.staff_name === sName;
-      const hasLine = (inv.invoice_items || []).some(item => item.staff_name === sName);
+      const hasMain = inv.staff_name && inv.staff_name.trim().toLowerCase() === sNameNorm;
+      const hasLine = (inv.invoice_items || []).some(item => item.staff_name && item.staff_name.trim().toLowerCase() === sNameNorm);
       return hasMain || hasLine;
     });
   }, [selectedPerformanceStaff, invoices, perfFilterMode, perfMonth, perfStart, perfEnd]);
@@ -329,7 +332,8 @@ export default function StaffManager() {
       let updatedCount = 0;
       for (const s of activeStaff) {
         // Compute tips for this staff in the month
-        const monthTips = (tipSplits || []).filter(ts => ts.staff_name === s.name && (
+        const sNameNorm = (s.name || "").trim().toLowerCase();
+        const monthTips = (tipSplits || []).filter(ts => ts.staff_name && ts.staff_name.trim().toLowerCase() === sNameNorm && (
           (invoices || []).some(inv => inv.id === ts.invoice_id && (inv.billing_at || "").slice(0, 7) === payrollMonth)
         ));
         const computedTips = monthTips.reduce((acc, t) => acc + Number(t.tip_amount || 0), 0);
@@ -445,7 +449,8 @@ export default function StaffManager() {
         advances = monthAdvances.reduce((acc, a) => acc + Number(a.amount || 0), 0);
 
         // Calculate live tips earned
-        const monthTips = (tipSplits || []).filter(ts => ts.staff_name === s.name && (
+        const sNameNorm = (s.name || "").trim().toLowerCase();
+        const monthTips = (tipSplits || []).filter(ts => ts.staff_name && ts.staff_name.trim().toLowerCase() === sNameNorm && (
           (invoices || []).some(inv => inv.id === ts.invoice_id && (inv.billing_at || "").slice(0, 7) === payrollMonth)
         ));
         tips = monthTips.reduce((acc, t) => acc + Number(t.tip_amount || 0), 0);
