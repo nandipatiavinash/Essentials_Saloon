@@ -59,7 +59,7 @@ export async function fetchAdminData() {
     invoices, customers, transactions, reportLogs,
     staff, attendance, inventory, cashRegister, attendanceLogs,
     staffPayments, staffAdvances, expenses, expenseCategories, tipSplits, reviews,
-    fixedExpenses, fixedExpensePayments
+    fixedExpenses, fixedExpensePayments, walletTransactions
   ] = await Promise.all([
     optional(t("categories").select("*").order("id"), []),
     optional(t("services").select("*").order("id"), []),
@@ -84,6 +84,7 @@ export async function fetchAdminData() {
     optional(t("reviews").select("*").order("created_at", { ascending: false }).limit(500), []),
     optional(t("fixed_expenses").select("*").order("created_at", { ascending: true }), []),
     optional(t("fixed_expense_payments").select("*").order("work_month", { ascending: false }), []),
+    optional(t("wallet_transactions").select("*").order("created_at", { ascending: false }).limit(3000), []),
   ]);
 
   // Clean up orphaned staff advance expenses
@@ -122,6 +123,7 @@ export async function fetchAdminData() {
     reviews: reviews ?? [],
     fixedExpenses: fixedExpenses ?? [],
     fixedExpensePayments: fixedExpensePayments ?? [],
+    walletTransactions: walletTransactions ?? [],
   };
 }
 
@@ -422,7 +424,365 @@ export async function saveInvoice(payload) {
   if (oldCustomerId && oldCustomerId !== customer.id) {
     await refreshCustomerRollup(oldCustomerId);
   }
+
+  // Handle Wallet Balance Redemption if paid via Wallet Balance
+  if (payload.payment_method === "Wallet Balance" || Number(payload.wallet_amount_used || 0) > 0) {
+    const redeemAmount = payload.payment_method === "Wallet Balance" ? invoice.total : Number(payload.wallet_amount_used);
+    if (redeemAmount > 0) {
+      try {
+        await redeemWalletBalance({
+          customer_id: customer.id,
+          invoice_id: invoice.id,
+          wallet_amount: redeemAmount,
+          mobile,
+          client_name: payload.client_name.trim(),
+          invoice_number: invoice.invoice_number,
+        });
+      } catch (walletErr) {
+        console.warn("Wallet redemption warning (proceeding with invoice):", walletErr.message);
+      }
+    }
+  }
+
+  // Handle 5% Direct Bill Cashback into Wallet Balance for bills > ₹500
+  const isWalletRecharge = payload.items?.some(it => it.service_name?.startsWith("Wallet Recharge"));
+  if (!isWalletRecharge && totals.total > 500) {
+    const cashbackAmount = Math.round(totals.total * 0.05 * 100) / 100;
+    if (cashbackAmount > 0) {
+      try {
+        await awardBillCashback({
+          customer_id: customer.id,
+          invoice_id: invoice.id,
+          bill_amount: totals.total,
+          cashback_amount: cashbackAmount,
+          mobile,
+          client_name: payload.client_name.trim(),
+          invoice_number: invoice.invoice_number,
+        });
+      } catch (cashbackErr) {
+        console.warn("Cashback award warning (proceeding with invoice):", cashbackErr.message);
+      }
+    }
+  }
+
   return normInvoice({ ...invoice, customers: customer });
+}
+
+// ─── Customer Wallet & Ledger API ─────────────────────────────────────────────
+
+export async function fetchCustomerWalletHistory(customerId) {
+  if (!customerId) return [];
+  try {
+    const { data, error } = await t("wallet_transactions")
+      .select("*")
+      .eq("customer_id", customerId)
+      .order("created_at", { ascending: false });
+    if (error) {
+      console.warn("fetchCustomerWalletHistory warning:", error.message);
+      return [];
+    }
+    return data ?? [];
+  } catch (err) {
+    console.warn("fetchCustomerWalletHistory error:", err.message);
+    return [];
+  }
+}
+
+export function calcActiveWalletBalance(customerId, walletTransactions = []) {
+  if (!customerId || !walletTransactions.length) return 0;
+  const now = new Date();
+  const customerTxs = walletTransactions.filter(tx => tx.customer_id === customerId);
+  
+  let balance = 0;
+  customerTxs.forEach(tx => {
+    const isExpired = tx.expiry_date && new Date(tx.expiry_date) < now;
+    if (tx.type === "recharge_credit" || tx.type === "cashback_credit" || tx.type === "adjustment") {
+      if (!isExpired) {
+        balance += Number(tx.amount || 0);
+      }
+    } else if (tx.type === "recharge_debit" || tx.type === "wallet_expire") {
+      balance -= Number(tx.amount || 0);
+    }
+  });
+  return Math.max(0, Math.round(balance * 100) / 100);
+}
+
+export async function rechargeCustomerWallet({ customer_id, mobile, client_name, pay_amount, wallet_value, expiry_months, payment_method, notes }) {
+  const cleanMobile = normalizePhone(mobile);
+  if (!cleanMobile) throw new Error("A valid mobile number is required for wallet recharge");
+  
+  const payAmt = Number(pay_amount || 0);
+  const walletVal = Number(wallet_value || 0);
+  if (payAmt <= 0 || walletVal <= 0) throw new Error("Pay amount and wallet value must be greater than zero");
+
+  // 1. Get or create customer
+  let custId = customer_id;
+  let custName = client_name?.trim() || "Valued Customer";
+  let existingCust = null;
+
+  try {
+    if (custId) {
+      const { data: c } = await t("customers").select("*").eq("id", custId).maybeSingle();
+      existingCust = c;
+    } else {
+      const { data: c } = await t("customers").select("*").eq("mobile", cleanMobile).maybeSingle();
+      existingCust = c;
+    }
+  } catch (e) {
+    console.warn("Error fetching existing customer for wallet recharge:", e.message);
+  }
+
+  const currentWallet = Number(existingCust?.wallet_balance || 0);
+  const newWalletBalance = currentWallet + walletVal;
+
+  let customer = null;
+  // Try upserting with wallet_balance column
+  try {
+    const { data: cData, error: custErr } = await t("customers")
+      .upsert({
+        id: existingCust ? existingCust.id : undefined,
+        name: custName,
+        mobile: cleanMobile,
+        wallet_balance: newWalletBalance,
+        last_visit_at: getISTDate().toISOString(),
+      }, { onConflict: "mobile" })
+      .select()
+      .single();
+
+    if (custErr) throw custErr;
+    customer = cData;
+  } catch (err) {
+    // If wallet_balance is missing in schema cache, fallback to upserting without wallet_balance
+    if (err.message?.includes("wallet_balance") || err.code === "PGRST204") {
+      console.warn("wallet_balance column not found in schema cache. Falling back to customer save without wallet_balance:", err.message);
+      const { data: fallbackCust, error: fallbackErr } = await t("customers")
+        .upsert({
+          id: existingCust ? existingCust.id : undefined,
+          name: custName,
+          mobile: cleanMobile,
+          last_visit_at: getISTDate().toISOString(),
+        }, { onConflict: "mobile" })
+        .select()
+        .single();
+      if (fallbackErr) throw fallbackErr;
+      customer = fallbackCust ? { ...fallbackCust, wallet_balance: newWalletBalance } : null;
+    } else {
+      throw err;
+    }
+  }
+
+  custId = customer?.id || custId;
+
+  // 2. Issue a Wallet Recharge Invoice for cash collection tracking
+  const billingAt = getISTDate().toISOString();
+  const invNumber = await makeInvoiceNumber(billingAt);
+  
+  const expiryStr = expiry_months && Number(expiry_months) > 0 ? `${expiry_months} Month(s)` : "No Expiry";
+  const rechargeNotes = notes || `Wallet Recharge: Paid ₹${payAmt} via ${payment_method || 'Cash'} (Added ₹${walletVal} Wallet Balance) | Expiry: ${expiryStr}`;
+
+  const { data: userRes } = await supabase.auth.getUser();
+  const invoiceRow = {
+    invoice_number: invNumber,
+    customer_id: custId,
+    client_name: custName,
+    mobile: cleanMobile,
+    subtotal: payAmt,
+    discount: 0,
+    tax: 0,
+    tax_rate: 0,
+    tip: 0,
+    total: payAmt,
+    payment_method: payment_method || "Cash",
+    notes: rechargeNotes,
+    status: "paid",
+    created_by: userRes?.user?.id || null,
+    billing_at: billingAt,
+  };
+
+  const { data: invoice, error: invErr } = await t("invoices").insert(invoiceRow).select().single();
+  if (invErr) throw invErr;
+
+  await t("invoice_items").insert({
+    invoice_id: invoice.id,
+    service_name: `Wallet Recharge (Value: ₹${walletVal})`,
+    item_type: "membership",
+    quantity: 1,
+    price: payAmt,
+    total: payAmt,
+    tax_inclusive: true,
+  });
+
+  await t("transactions").upsert({
+    invoice_id: invoice.id,
+    customer_id: custId,
+    payment_method: invoice.payment_method,
+    amount: payAmt,
+    status: "success",
+    paid_at: billingAt,
+  }, { onConflict: "invoice_id" });
+
+  // 3. Calculate expiry date if specified
+  let expiryDate = null;
+  if (expiry_months && Number(expiry_months) > 0) {
+    const exp = getISTDate();
+    exp.setMonth(exp.getMonth() + Number(expiry_months));
+    expiryDate = exp.toISOString();
+  }
+
+  // 4. Log wallet transaction ledger
+  let tx = null;
+  try {
+    const { data: txData, error: txErr } = await t("wallet_transactions").insert({
+      customer_id: custId,
+      mobile: cleanMobile,
+      type: "recharge_credit",
+      amount: walletVal,
+      paid_amount: payAmt,
+      bonus_amount: Math.max(0, walletVal - payAmt),
+      expiry_date: expiryDate,
+      invoice_id: invoice.id,
+      notes: rechargeNotes,
+    }).select().single();
+
+    if (txErr) console.warn("Wallet ledger entry warning:", txErr.message);
+    tx = txData;
+  } catch (ledgerErr) {
+    console.warn("Wallet ledger table warning (please apply SQL migration):", ledgerErr.message);
+  }
+
+  return { customer: customer || { id: custId, mobile: cleanMobile, wallet_balance: newWalletBalance }, invoice, walletTransaction: tx };
+}
+
+export async function awardBillCashback({ customer_id, invoice_id, bill_amount, cashback_amount, mobile, client_name, invoice_number }) {
+  if (!customer_id || cashback_amount <= 0) return null;
+
+  // 60 days validity
+  const expiry = getISTDate();
+  expiry.setDate(expiry.getDate() + 60);
+  const expiryDate = expiry.toISOString();
+
+  const auditNote = `5% Bill Cashback earned on Invoice #${invoice_number || 'N/A'} (Bill: ₹${bill_amount}) | Valid 60 days until ${expiryDate.slice(0, 10)}`;
+
+  // Update customer wallet_balance if column exists
+  try {
+    const { data: cust } = await t("customers").select("wallet_balance").eq("id", customer_id).maybeSingle();
+    if (cust && cust.wallet_balance !== undefined) {
+      const currentBal = Number(cust.wallet_balance || 0);
+      await t("customers").update({ wallet_balance: currentBal + cashback_amount }).eq("id", customer_id);
+    }
+  } catch (custErr) {
+    console.warn("Could not update wallet_balance on customers table:", custErr.message);
+  }
+
+  // Insert wallet transaction record
+  try {
+    const { data: tx, error } = await t("wallet_transactions").insert({
+      customer_id,
+      mobile: mobile || "",
+      type: "cashback_credit",
+      amount: cashback_amount,
+      paid_amount: 0,
+      bonus_amount: cashback_amount,
+      expiry_date: expiryDate,
+      invoice_id,
+      notes: auditNote,
+    }).select().single();
+
+    if (error) console.warn("Cashback ledger warning:", error.message);
+    return tx;
+  } catch (txErr) {
+    console.warn("Cashback ledger insert error:", txErr.message);
+    return null;
+  }
+}
+
+export async function redeemWalletBalance({ customer_id, invoice_id, wallet_amount, mobile, client_name, invoice_number }) {
+  if (!customer_id || wallet_amount <= 0) return null;
+
+  const auditNote = `Redeemed ₹${wallet_amount} Wallet Balance for Invoice #${invoice_number || 'N/A'}`;
+
+  // Update customer wallet_balance if column exists
+  try {
+    const { data: cust } = await t("customers").select("wallet_balance").eq("id", customer_id).maybeSingle();
+    if (cust && cust.wallet_balance !== undefined) {
+      const currentBal = Number(cust.wallet_balance || 0);
+      const newBal = Math.max(0, currentBal - wallet_amount);
+      await t("customers").update({ wallet_balance: newBal }).eq("id", customer_id);
+    }
+  } catch (custErr) {
+    console.warn("Could not update wallet_balance on customers table:", custErr.message);
+  }
+
+  // Insert wallet transaction record
+  try {
+    const { data: tx, error } = await t("wallet_transactions").insert({
+      customer_id,
+      mobile: mobile || "",
+      type: "recharge_debit",
+      amount: wallet_amount,
+      paid_amount: 0,
+      bonus_amount: 0,
+      invoice_id,
+      notes: auditNote,
+    }).select().single();
+
+    if (error) console.warn("Wallet debit ledger warning:", error.message);
+    return tx;
+  } catch (txErr) {
+    console.warn("Wallet debit ledger insert error:", txErr.message);
+  }
+}
+
+export async function revertWalletTransaction(transactionId, reason = "Mistake / Cancelled by Staff") {
+  if (!transactionId) throw new Error("Transaction ID is required");
+
+  // 1. Fetch the transaction record
+  const { data: tx, error: txErr } = await t("wallet_transactions").select("*").eq("id", transactionId).single();
+  if (txErr || !tx) throw new Error("Wallet transaction not found");
+
+  const customerId = tx.customer_id;
+  const amount = Number(tx.amount || 0);
+
+  // 2. Fetch current customer balance
+  let currentBal = 0;
+  try {
+    const { data: cust } = await t("customers").select("wallet_balance").eq("id", customerId).maybeSingle();
+    currentBal = Number(cust?.wallet_balance || 0);
+  } catch (e) {
+    console.warn("Could not fetch customer wallet_balance:", e.message);
+  }
+
+  // 3. Compute adjusted balance:
+  // If reversing a credit (recharge or cashback), deduct the credited amount.
+  // If reversing a debit (payment redemption), refund/restore the amount back to the customer.
+  let newBal = currentBal;
+  if (tx.type === "recharge_credit" || tx.type === "cashback_credit") {
+    newBal = Math.max(0, currentBal - amount);
+  } else if (tx.type === "recharge_debit") {
+    newBal = currentBal + amount;
+  }
+
+  // 4. Update customer wallet balance in database
+  try {
+    await t("customers").update({ wallet_balance: newBal }).eq("id", customerId);
+  } catch (e) {
+    console.warn("Could not update customer wallet_balance during revert:", e.message);
+  }
+
+  // 5. If this transaction was linked to an invoice (e.g. Wallet Recharge Invoice), delete that invoice
+  if (tx.invoice_id && tx.type === "recharge_credit") {
+    try {
+      await t("invoices").delete().eq("id", tx.invoice_id);
+    } catch (e) {
+      console.warn("Could not delete associated recharge invoice:", e.message);
+    }
+  }
+
+  // 6. Delete the erroneous wallet transaction record from ledger
+  const { error: delErr } = await t("wallet_transactions").delete().eq("id", transactionId);
+  if (delErr) throw delErr;
+
+  return { success: true, customerId, newBalance: newBal };
 }
 
 export async function deleteInvoice(id) {
@@ -432,12 +792,38 @@ export async function deleteInvoice(id) {
   const { data: items, error: itemsError } = await t("invoice_items").select("*").eq("invoice_id", id);
   if (itemsError) throw itemsError;
 
+  // Restore inventory product quantities
   const productItems = (items || []).filter(item => item.item_type === "product" && item.inventory_id);
   for (const pItem of productItems) {
     const { data: invRow } = await t("inventory").select("stock_qty").eq("id", pItem.inventory_id).single();
     if (invRow) {
       const newQty = Number(invRow.stock_qty) + Number(pItem.quantity || 1);
       await t("inventory").update({ stock_qty: newQty, updated_at: getISTDate().toISOString() }).eq("id", pItem.inventory_id);
+    }
+  }
+
+  // Handle Reversion of any linked wallet transactions
+  if (id) {
+    try {
+      const { data: linkedTxs } = await t("wallet_transactions").select("*").eq("invoice_id", id);
+      if (linkedTxs && linkedTxs.length > 0) {
+        for (const tx of linkedTxs) {
+          if (tx.customer_id) {
+            const { data: cust } = await t("customers").select("wallet_balance").eq("id", tx.customer_id).maybeSingle();
+            const curBal = Number(cust?.wallet_balance || 0);
+            let updatedBal = curBal;
+            if (tx.type === "recharge_credit" || tx.type === "cashback_credit") {
+              updatedBal = Math.max(0, curBal - Number(tx.amount || 0));
+            } else if (tx.type === "recharge_debit") {
+              updatedBal = curBal + Number(tx.amount || 0);
+            }
+            await t("customers").update({ wallet_balance: updatedBal }).eq("id", tx.customer_id);
+          }
+          await t("wallet_transactions").delete().eq("id", tx.id);
+        }
+      }
+    } catch (wErr) {
+      console.warn("Error cleaning up linked wallet transactions on invoice delete:", wErr.message);
     }
   }
 
@@ -679,7 +1065,10 @@ export function format12HourTime(timeStr) {
 
 export function buildAnalytics(invoices = []) {
   const paid = invoices.filter((invoice) => invoice.status !== "void");
-  const revenue = paid.reduce((sum, invoice) => sum + Number(invoice.total || 0), 0);
+  const cashPaidInvoices = paid.filter((invoice) => invoice.payment_method !== "Wallet Balance");
+  
+  const revenue = cashPaidInvoices.reduce((sum, invoice) => sum + Number(invoice.total || 0), 0);
+  const grossSales = paid.reduce((sum, invoice) => sum + Number(invoice.total || 0), 0);
   
   const paymentBreakdown = {};
   paid.forEach((invoice) => {
@@ -717,9 +1106,14 @@ export function buildAnalytics(invoices = []) {
     const day = istDate.toISOString().slice(0, 10);
     const month = day.slice(0, 7);
     const hour = String(istDate.getHours()).padStart(2, "0") + ":00";
-    byDay[day] = (byDay[day] || 0) + Number(invoice.total || 0);
-    byMonth[month] = (byMonth[month] || 0) + Number(invoice.total || 0);
-    byHour[hour] = (byHour[hour] || 0) + Number(invoice.total || 0);
+    
+    // Only calculate into net cash revenue if not paid via Wallet Balance
+    if (invoice.payment_method !== "Wallet Balance") {
+      byDay[day] = (byDay[day] || 0) + Number(invoice.total || 0);
+      byMonth[month] = (byMonth[month] || 0) + Number(invoice.total || 0);
+      byHour[hour] = (byHour[hour] || 0) + Number(invoice.total || 0);
+    }
+    
     customerTotals[invoice.client_name || "Walk-in"] = (customerTotals[invoice.client_name || "Walk-in"] || 0) + Number(invoice.total || 0);
     (invoice.invoice_items || []).forEach((item) => {
       const name = item.service_name || "Service";
@@ -735,6 +1129,7 @@ export function buildAnalytics(invoices = []) {
 
   return {
     revenue: roundMoney(revenue),
+    grossSales: roundMoney(grossSales),
     billCount: paid.length,
     averageBill: paid.length ? roundMoney(revenue / paid.length) : 0,
     todayRevenue: roundMoney(byDay[todayKey] || 0),
@@ -767,6 +1162,7 @@ function normCustomer(row) {
     ...row,
     total_spend: Number(row.total_spend || 0),
     visit_count: Number(row.visit_count || 0),
+    wallet_balance: Number(row.wallet_balance || 0),
     is_member: !!row.is_member,
     membership_tier: row.membership_tier || "Regular",
     membership_start: row.membership_start || null,

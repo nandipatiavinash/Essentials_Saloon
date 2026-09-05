@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Eye, Plus, Printer, Search, Send, Trash2 } from "lucide-react";
+import { Eye, Plus, Printer, Search, Send, Trash2, Wallet, Sparkles } from "lucide-react";
 import toast from "react-hot-toast";
 import { useAdmin } from "../../layouts/AdminLayout";
 import { useSearchParams } from "react-router-dom";
@@ -8,12 +8,14 @@ import { buildWhatsAppLink, formatInvoiceMessage } from "../../lib/whatsapp";
 import SearchableStaffDropdown from "../../components/SearchableStaffDropdown";
 import SearchableServiceDropdown from "../../components/SearchableServiceDropdown";
 import SearchableProductDropdown from "../../components/SearchableProductDropdown";
+import CustomerWalletModal from "../../components/CustomerWalletModal";
 
 
 const emptyBill = () => ({
   client_name: "",
   mobile: "",
   customer_id: null,
+  wallet_balance: 0,
   is_member: false,
   membership_tier: "Member",
   membership_id: "",
@@ -36,7 +38,7 @@ const emptyBill = () => ({
 
 
 export default function BillingPOS() {
-  const { services, settings, staff, attendance, inventory, reload } = useAdmin();
+  const { services, settings, staff, attendance, inventory, customers, walletTransactions, reload } = useAdmin();
   const [searchParams] = useSearchParams();
   const [bill, setBill] = useState(emptyBill);
   const [saving, setSaving] = useState(false);
@@ -54,12 +56,27 @@ export default function BillingPOS() {
   const [loadingAllTime, setLoadingAllTime] = useState(false);
   const [cashReceived, setCashReceived] = useState("");
   const [customItemModal, setCustomItemModal] = useState(null); // null | { item_type, name, price, quantity, staff_name }
-
-
+  const [walletModalOpen, setWalletModalOpen] = useState(false);
 
   const activeServices = useMemo(() => (services || []).filter((svc) => svc.active), [services]);
   const activeInventory = useMemo(() => (inventory || []).filter(item => Number(item.stock_qty) > 0), [inventory]);
   const totals = useMemo(() => calculateInvoiceTotals(bill), [bill]);
+
+  const matchedCustomer = useMemo(() => {
+    if (bill.customer_id) {
+      const found = (customers || []).find(c => c.id === bill.customer_id);
+      if (found) return found;
+    }
+    if (bill.mobile?.trim()) {
+      const clean = bill.mobile.trim().replace(/\D/g, "").slice(-10);
+      if (clean) {
+        return (customers || []).find(c => (c.mobile || "").replace(/\D/g, "").slice(-10) === clean) || null;
+      }
+    }
+    return null;
+  }, [customers, bill.customer_id, bill.mobile]);
+
+  const activeWalletBal = Number(matchedCustomer?.wallet_balance ?? bill.wallet_balance ?? 0);
 
   const todayStr = (bill.billing_at || new Date().toISOString()).slice(0, 10);
   const presentStaff = useMemo(() => {
@@ -196,10 +213,11 @@ export default function BillingPOS() {
             membership_tier: customer.membership_tier || "Member",
             membership_id: customer.membership_id || "",
             membership_end: customer.membership_end || "",
+            wallet_balance: Number(customer.wallet_balance || 0),
             items: updatedItems,
           };
         });
-        toast.success(`Client found: ${customer.name}${customer.is_member ? " (Member)" : ""}`);
+        toast.success(`Client found: ${customer.name}${customer.is_member ? " (Member)" : ""}${Number(customer.wallet_balance || 0) > 0 ? ` (Wallet: ₹${Number(customer.wallet_balance).toLocaleString()})` : ""}`);
       } else {
         toast.error("No client profile found for phone or ID.");
       }
@@ -391,6 +409,14 @@ export default function BillingPOS() {
       }
     }
 
+    // Validate wallet balance if paying via Wallet Balance
+    if (bill.payment_method === "Wallet Balance") {
+      if (activeWalletBal < totals.total) {
+        toast.error(`Insufficient Wallet Balance! Available: ₹${activeWalletBal.toLocaleString()}, Bill Total: ₹${totals.total.toLocaleString()}`);
+        return;
+      }
+    }
+
     setSaving(true);
     try {
       let transactionId = bill.transaction_id || null;
@@ -426,6 +452,13 @@ export default function BillingPOS() {
       setBillSaved(true);
       setAttemptedSubmit(false);
       toast.success(saved.invoice_number + " saved successfully!");
+
+      // 5% Cashback notification on bills > ₹500
+      if (totals.total > 500 && !bill.items?.some(i => i.service_name?.startsWith("Wallet Recharge"))) {
+        const cb = Math.round(totals.total * 0.05);
+        toast.success(`🎁 ₹${cb} (5% Cashback) credited to client's wallet! (Valid 60 days)`);
+      }
+
       await Promise.all([loadHistory(search), reload()]);
     } catch (err) {
       toast.error(err.message);
@@ -787,6 +820,36 @@ export default function BillingPOS() {
                 </div>
               </div>
             </div>
+            {bill.mobile?.trim() && (
+              <div style={{ marginTop: "0.6rem", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "0.5rem", padding: "0.65rem 0.9rem", background: "linear-gradient(135deg, rgba(201, 185, 154, 0.12) 0%, rgba(248, 248, 246, 0.8) 100%)", border: "1px solid var(--a-border)", borderRadius: "4px" }}>
+                <div 
+                  onClick={() => setWalletModalOpen(true)}
+                  style={{ display: "flex", alignItems: "center", gap: "0.5rem", cursor: "pointer" }}
+                  title="Click to view complete wallet transaction history"
+                >
+                  <div style={{ width: "28px", height: "28px", borderRadius: "3px", background: "rgba(201, 185, 154, 0.2)", display: "flex", alignItems: "center", justifyContent: "center", color: "#aa820a" }}>
+                    <Wallet size={16} />
+                  </div>
+                  <div>
+                    <span style={{ fontSize: "0.8rem", fontWeight: 700, color: "var(--a-text)" }}>
+                      Wallet Balance: <span style={{ color: "#aa820a" }}>₹{activeWalletBal.toLocaleString()}</span>
+                    </span>
+                    <span style={{ fontSize: "0.7rem", color: "var(--a-muted)", marginLeft: "8px", textDecoration: "underline" }}>
+                      View History & Notes
+                    </span>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  className="btn-add"
+                  onClick={() => setWalletModalOpen(true)}
+                  style={{ padding: "4px 10px", fontSize: "0.7rem", display: "inline-flex", alignItems: "center", gap: "4px" }}
+                >
+                  <Plus size={13} /> Wallet Recharge
+                </button>
+              </div>
+            )}
             {bill.is_member ? (
               bill.is_member_signup ? (
                 <div style={{ marginTop: "0.75rem", padding: "0.75rem 1rem", background: "rgba(46,125,50,0.08)", border: "1px solid rgba(46,125,50,0.3)", color: "#2e7d32", fontSize: "0.72rem", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -1087,6 +1150,7 @@ export default function BillingPOS() {
                   <option value="UPI">UPI</option>
                   <option value="Card">Card</option>
                   <option value="Cash + UPI">Cash + UPI</option>
+                  <option value="Wallet Balance">Wallet Balance (Bal: ₹{activeWalletBal.toLocaleString()})</option>
                 </select>
               </div>
               <div className="form-group">
@@ -1095,11 +1159,28 @@ export default function BillingPOS() {
                   className="form-input" 
                   value={bill.transaction_id} 
                   onChange={(e) => setBill({ ...bill, transaction_id: e.target.value })} 
-                  disabled={bill.payment_method === "Cash + UPI"}
-                  placeholder={bill.payment_method === "Cash + UPI" ? "Managed by split inputs" : "Txn / Ref number"}
+                  disabled={bill.payment_method === "Cash + UPI" || bill.payment_method === "Wallet Balance"}
+                  placeholder={bill.payment_method === "Cash + UPI" ? "Managed by split inputs" : bill.payment_method === "Wallet Balance" ? "Deducted from Client Wallet" : "Txn / Ref number"}
                 />
               </div>
             </div>
+            {bill.payment_method === "Wallet Balance" && (
+              <div style={{ marginTop: "0.5rem", padding: "0.75rem 1rem", borderRadius: "4px", background: activeWalletBal >= totals.total ? "rgba(46, 125, 50, 0.08)" : "rgba(183, 28, 28, 0.08)", border: `1px solid ${activeWalletBal >= totals.total ? "rgba(46, 125, 50, 0.3)" : "rgba(183, 28, 28, 0.3)"}`, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "0.5rem" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                  <Wallet size={16} color={activeWalletBal >= totals.total ? "#2e7d32" : "#b71c1c"} />
+                  <span style={{ fontSize: "0.78rem", color: activeWalletBal >= totals.total ? "#2e7d32" : "#b71c1c", fontWeight: 600 }}>
+                    {activeWalletBal >= totals.total
+                      ? `₹${totals.total.toLocaleString()} will be deducted from client's wallet. (Remaining after bill: ₹${(activeWalletBal - totals.total).toLocaleString()})`
+                      : `Insufficient wallet balance! Client only has ₹${activeWalletBal.toLocaleString()} in wallet (Bill Total: ₹${totals.total.toLocaleString()}).`}
+                  </span>
+                </div>
+                {activeWalletBal < totals.total && (
+                  <button type="button" className="btn-add" onClick={() => setWalletModalOpen(true)} style={{ padding: "3px 8px", fontSize: "0.68rem" }}>
+                    + Recharge Wallet
+                  </button>
+                )}
+              </div>
+            )}
             {bill.payment_method === "Cash + UPI" && (
               <div className="form-row" style={{ marginTop: "0.5rem", background: "rgba(255,255,255,0.02)", padding: "1rem", border: "1px solid var(--a-border)", display: "flex", gap: "1rem" }}>
                 <div className="form-group" style={{ flex: 1 }}>
@@ -1210,6 +1291,14 @@ export default function BillingPOS() {
               </div>
             )}
             <div className="grand"><span>Grand Total</span><strong>Rs {totals.total.toLocaleString("en-IN")}</strong></div>
+            {totals.total > 500 && !bill.items?.some(i => i.service_name?.startsWith("Wallet Recharge")) && (
+              <div style={{ padding: "0.6rem 0.85rem", background: "rgba(201, 185, 154, 0.12)", border: "1px dashed rgba(201, 185, 154, 0.6)", borderRadius: "4px", display: "flex", alignItems: "center", gap: "0.5rem", marginTop: "0.6rem" }}>
+                <Sparkles size={15} color="#aa820a" />
+                <span style={{ fontSize: "0.72rem", color: "#aa820a", fontWeight: 600 }}>
+                  🎁 5% Cashback (₹{Math.round(totals.total * 0.05).toLocaleString()}) will be added to client's wallet! (Valid 60 days)
+                </span>
+              </div>
+            )}
           </div>
 
           <div className="invoice-actions no-print">
@@ -1519,6 +1608,24 @@ export default function BillingPOS() {
           </div>
         </div>
       )}
+
+      {/* Customer Wallet & Recharge Modal */}
+      <CustomerWalletModal
+        isOpen={walletModalOpen}
+        onClose={() => setWalletModalOpen(false)}
+        customer={matchedCustomer || {
+          id: bill.customer_id,
+          name: bill.client_name || "Valued Client",
+          mobile: bill.mobile,
+          wallet_balance: activeWalletBal,
+          is_member: bill.is_member,
+        }}
+        onWalletUpdated={(newBal) => {
+          setBill(prev => ({ ...prev, wallet_balance: newBal }));
+          if (reload) reload();
+        }}
+        walletTransactions={walletTransactions}
+      />
     </div>
   );
 }

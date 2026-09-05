@@ -716,15 +716,26 @@ export default function ReportsManager() {
     let gst = 0;
     let tips = 0;
     let net = 0;
+    let cashCollected = 0;
+    let walletRedeemed = 0;
 
     filteredInvoices.forEach(inv => {
-      gross += Number(inv.total || 0);
-      gst += Number(inv.tax || 0);
-      tips += Number(inv.tip || 0);
-      net += Number(inv.total || 0) - Number(inv.tax || 0) - Number(inv.tip || 0);
+      const tot = Number(inv.total || 0);
+      const tax = Number(inv.tax || 0);
+      const tip = Number(inv.tip || 0);
+      gross += tot;
+      gst += tax;
+      tips += tip;
+      net += tot - tax - tip;
+
+      if (inv.payment_method === "Wallet Balance") {
+        walletRedeemed += tot;
+      } else {
+        cashCollected += tot;
+      }
     });
 
-    return { gross, gst, tips, net };
+    return { gross, gst, tips, net, cashCollected, walletRedeemed };
   }, [filteredInvoices]);
 
   // WhatsApp EOD Summary report
@@ -1395,19 +1406,19 @@ export default function ReportsManager() {
             <div className="stat-sub">Before GST and Tips</div>
           </div>
           <div className="stat-card">
-            <div className="stat-label">GST Collected</div>
-            <div className="stat-value" style={{ color: "var(--a-text)" }}>Rs {totals.gst.toLocaleString("en-IN")}</div>
-            <div className="stat-sub">GST tax component</div>
+            <div className="stat-label">Cash Collections</div>
+            <div className="stat-value" style={{ color: "#10b981", fontWeight: "bold" }}>Rs {totals.cashCollected.toLocaleString("en-IN")}</div>
+            <div className="stat-sub">Direct money received (incl. recharges)</div>
           </div>
           <div className="stat-card">
-            <div className="stat-label">Tips Received</div>
-            <div className="stat-value" style={{ color: "var(--a-text)" }}>Rs {totals.tips.toLocaleString("en-IN")}</div>
-            <div className="stat-sub">Stylist tip distributions</div>
+            <div className="stat-label">Wallet Redeemed</div>
+            <div className="stat-value" style={{ color: "var(--gold)", fontWeight: "bold" }}>Rs {totals.walletRedeemed.toLocaleString("en-IN")}</div>
+            <div className="stat-sub">Service value paid with wallet</div>
           </div>
           <div className="stat-card">
-            <div className="stat-label">Gross Revenue</div>
+            <div className="stat-label">Gross Business</div>
             <div className="stat-value" style={{ color: "var(--a-text)", fontWeight: "bold" }}>Rs {totals.gross.toLocaleString("en-IN")}</div>
-            <div className="stat-sub">Total amount collected</div>
+            <div className="stat-sub">Total business value rendered</div>
           </div>
         </div>
       </div>
@@ -1424,6 +1435,7 @@ export default function ReportsManager() {
               <th>Invoice Number</th>
               <th>Client</th>
               <th>Stylist</th>
+              <th>Payment Method</th>
               <th style={{ textAlign: "right" }}>Net Amount</th>
               <th style={{ textAlign: "right" }}>GST Tax</th>
               <th style={{ textAlign: "right" }}>Tips</th>
@@ -1433,6 +1445,7 @@ export default function ReportsManager() {
           <tbody>
             {filteredInvoices.map((inv) => {
               const netAmt = Number(inv.total || 0) - Number(inv.tax || 0) - Number(inv.tip || 0);
+              const isWallet = inv.payment_method === "Wallet Balance";
               return (
                 <tr key={inv.id}>
                   <td>{inv.billing_at ? inv.billing_at.slice(0, 10) : "—"}</td>
@@ -1446,14 +1459,26 @@ export default function ReportsManager() {
                       <span className="badge badge-gold" style={{ padding: "2px 6px" }}>{inv.staff_name}</span>
                     ) : "—"}
                   </td>
+                  <td>
+                    {isWallet ? (
+                      <span style={{ fontSize: "0.72rem", padding: "2px 8px", borderRadius: "6px", background: "rgba(212, 175, 55, 0.15)", color: "var(--gold)", border: "1px solid rgba(212, 175, 55, 0.3)", fontWeight: 600 }}>
+                        💳 Wallet Balance
+                      </span>
+                    ) : (
+                      <span style={{ fontSize: "0.75rem" }}>{inv.payment_method || "Cash"}</span>
+                    )}
+                  </td>
                   <td style={{ textAlign: "right" }}>Rs {netAmt.toLocaleString("en-IN")}</td>
                   <td style={{ textAlign: "right" }}>Rs {Number(inv.tax || 0).toLocaleString("en-IN")}</td>
                   <td style={{ textAlign: "right", color: inv.tip > 0 ? "var(--a-text)" : "inherit" }}>Rs {Number(inv.tip || 0).toLocaleString("en-IN")}</td>
-                  <td style={{ textAlign: "right", fontWeight: "bold", color: "var(--a-text)" }}>Rs {Number(inv.total || 0).toLocaleString("en-IN")}</td>
+                  <td style={{ textAlign: "right", fontWeight: "bold", color: isWallet ? "var(--gold)" : "var(--a-text)" }}>
+                    Rs {Number(inv.total || 0).toLocaleString("en-IN")}
+                    {isWallet && <div style={{ fontSize: "0.62rem", color: "var(--gold)" }}>(Wallet Debit)</div>}
+                  </td>
                 </tr>
               );
             })}
-            {!filteredInvoices.length && <tr><td colSpan="8" style={{ textAlign: "center", padding: "2rem", color: "var(--a-faint)" }}>No invoices in this range.</td></tr>}
+            {!filteredInvoices.length && <tr><td colSpan="9" style={{ textAlign: "center", padding: "2rem", color: "var(--a-faint)" }}>No invoices in this range.</td></tr>}
           </tbody>
         </table>
       </div>

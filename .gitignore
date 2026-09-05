@@ -1,4 +1,9 @@
 node_modules
 .env
+.env.*
 .vercel
 scratch/
+supabase/.branches/
+supabase/.temp/
+.DS_Store
+

@@ -1,9 +1,10 @@
 import { useMemo, useState, useEffect } from "react";
-import { Phone, Search, UserRound, ArrowUpDown } from "lucide-react";
+import { Phone, Search, UserRound, ArrowUpDown, Wallet } from "lucide-react";
 import { useAdmin } from "../../layouts/AdminLayout";
 import { supabase } from "../../lib/supabase";
 import { fetchInvoiceDetails, generateAndSaveReviewToken } from "../../lib/api";
 import { buildWhatsAppLink, formatInvoiceMessage } from "../../lib/whatsapp";
+import CustomerWalletModal from "../../components/CustomerWalletModal";
 import toast from "react-hot-toast";
 
 const cleanPhone = (phone = "") => {
@@ -13,7 +14,7 @@ const cleanPhone = (phone = "") => {
 };
 
 export default function ClientsManager() {
-  const { customers, invoices, settings } = useAdmin();
+  const { customers, invoices, settings, walletTransactions, reload } = useAdmin();
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState(null);
   
@@ -23,6 +24,7 @@ export default function ClientsManager() {
   const [inactiveData, setInactiveData] = useState([]);
   const [loadingInactive, setLoadingInactive] = useState(false);
   const [viewInvoiceData, setViewInvoiceData] = useState(null);
+  const [walletModalClient, setWalletModalClient] = useState(null);
 
   // --- TAB 1: ALL CLIENTS FILTER & SORT ---
   const filteredAndSortedAll = useMemo(() => {
@@ -465,6 +467,31 @@ export default function ClientsManager() {
                     <div><span>Total Spend</span><strong>Rs {Number(selected.total_spend || 0).toLocaleString("en-IN")}</strong></div>
                     <div><span>Visits</span><strong>{selected.visit_count || 0}</strong></div>
                     <div><span>Membership</span><strong>{selected.is_member ? "Member" : "None"}</strong></div>
+                    <div>
+                      <span>Wallet Balance</span>
+                      <strong style={{ color: "#aa820a" }}>₹{Number(selected.wallet_balance || 0).toLocaleString("en-IN")}</strong>
+                    </div>
+                  </div>
+
+                  {/* Wallet Management Card */}
+                  <div style={{ background: "linear-gradient(135deg, rgba(201,185,154,0.12) 0%, rgba(248,248,246,0.9) 100%)", border: "1px solid var(--a-border)", borderRadius: "4px", padding: "0.85rem 1rem", marginBottom: "1.25rem", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "0.5rem" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                      <div style={{ width: "36px", height: "36px", borderRadius: "4px", background: "rgba(201, 185, 154, 0.2)", display: "flex", alignItems: "center", justifyContent: "center", color: "#aa820a", border: "1px solid rgba(201, 185, 154, 0.4)" }}>
+                        <Wallet size={20} />
+                      </div>
+                      <div>
+                        <div style={{ fontSize: "0.58rem", textTransform: "uppercase", letterSpacing: "0.14em", color: "#aa820a", fontWeight: 700 }}>Client Wallet Balance</div>
+                        <div style={{ fontSize: "1.3rem", fontWeight: 700, color: "var(--a-text)" }}>₹{Number(selected.wallet_balance || 0).toLocaleString()}</div>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      className="btn-add"
+                      onClick={() => setWalletModalClient(selected)}
+                      style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "0.68rem", padding: "6px 12px", letterSpacing: "0.12em" }}
+                    >
+                      <Wallet size={14} /> Wallet History &amp; Recharge
+                    </button>
                   </div>
 
                   {selected.is_member && (
@@ -769,6 +796,19 @@ export default function ClientsManager() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Customer Wallet Modal */}
+      {walletModalClient && (
+        <CustomerWalletModal
+          isOpen={!!walletModalClient}
+          onClose={() => setWalletModalClient(null)}
+          customer={walletModalClient}
+          onWalletUpdated={(newBal) => {
+            if (reload) reload();
+          }}
+          walletTransactions={walletTransactions}
+        />
       )}
     </>
   );
