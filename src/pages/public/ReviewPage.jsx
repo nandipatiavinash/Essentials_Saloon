@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
-import { fetchInvoiceByReviewToken, submitReview } from "../../lib/api";
+import { fetchInvoiceByReviewToken, submitReview, isProductItem } from "../../lib/api";
 
 export default function ReviewPage() {
   const [searchParams] = useSearchParams();
@@ -226,7 +226,7 @@ export default function ReviewPage() {
                   Services received
                 </div>
                 <ul style={{ margin: 0, paddingLeft: "1.2rem", fontSize: "0.82rem", color: "#444", lineHeight: "1.5" }}>
-                  {(invoice.invoice_items || []).filter(i => i.item_type !== "product").map((item, idx) => (
+                  {(invoice.invoice_items || []).filter(i => i.item_type !== "product" && !isProductItem(i)).map((item, idx) => (
                     <li key={idx}>{item.service_name}</li>
                   ))}
                 </ul>

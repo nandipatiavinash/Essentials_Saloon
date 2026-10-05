@@ -3,7 +3,7 @@ import { Eye, Plus, Printer, Search, Send, Trash2, Wallet, Sparkles } from "luci
 import toast from "react-hot-toast";
 import { useAdmin } from "../../layouts/AdminLayout";
 import { useSearchParams } from "react-router-dom";
-import { calculateInvoiceTotals, deleteInvoice, fetchInvoiceDetails, findCustomerByPhone, saveInvoice, searchInvoices, saveTipSplits, generateAndSaveReviewToken } from "../../lib/api";
+import { calculateInvoiceTotals, deleteInvoice, voidInvoice, fetchInvoiceDetails, findCustomerByPhone, saveInvoice, searchInvoices, saveTipSplits, generateAndSaveReviewToken } from "../../lib/api";
 import { buildWhatsAppLink, formatInvoiceMessage } from "../../lib/whatsapp";
 import SearchableStaffDropdown from "../../components/SearchableStaffDropdown";
 import SearchableServiceDropdown from "../../components/SearchableServiceDropdown";
@@ -34,6 +34,8 @@ const emptyBill = () => ({
   notes: "",
   staff_name: "",
   billing_at: new Date().toISOString().slice(0, 10),
+  enable_cashback: false,
+  cashback_amount: "",
 });
 
 
@@ -57,6 +59,9 @@ export default function BillingPOS() {
   const [cashReceived, setCashReceived] = useState("");
   const [customItemModal, setCustomItemModal] = useState(null); // null | { item_type, name, price, quantity, staff_name }
   const [walletModalOpen, setWalletModalOpen] = useState(false);
+  const [voidModal, setVoidModal] = useState(null); // null | { id, invoice_number }
+  const [voidReason, setVoidReason] = useState("");
+  const [voiding, setVoiding] = useState(false);
 
   const activeServices = useMemo(() => (services || []).filter((svc) => svc.active), [services]);
   const activeInventory = useMemo(() => (inventory || []).filter(item => Number(item.stock_qty) > 0), [inventory]);
@@ -359,11 +364,17 @@ export default function BillingPOS() {
     }
     const qty = Number(customItemModal.quantity || 1);
 
+    const trimmedName = customItemModal.name.trim().toLowerCase();
+    const matchedProduct = (activeInventory || []).find(p => p.name && p.name.trim().toLowerCase() === trimmedName);
+
+    const resolvedType = matchedProduct ? "product" : customItemModal.item_type;
+    const resolvedInventoryId = matchedProduct ? matchedProduct.id : null;
+
     setBill((current) => {
       const newItem = {
-        item_type: customItemModal.item_type,
+        item_type: resolvedType,
         service_id: null,
-        inventory_id: null,
+        inventory_id: resolvedInventoryId,
         service_name: customItemModal.name,
         quantity: qty,
         price,
@@ -376,7 +387,7 @@ export default function BillingPOS() {
       };
     });
 
-    toast.success(`Custom ${customItemModal.item_type} added!`);
+    toast.success(`Custom ${resolvedType} added!`);
     setCustomItemModal(null);
   };
 
@@ -427,9 +438,19 @@ export default function BillingPOS() {
         ...bill,
         staff_name: bill.items[0]?.staff_name || null,
         transaction_id: transactionId,
-        billing_at: bill.billing_at
-          ? new Date(bill.billing_at + "T12:00:00+05:30").toISOString()
-          : new Date().toISOString()
+        billing_at: (() => {
+          if (!bill.billing_at) return new Date().toISOString();
+          const now = new Date();
+          const todayStr = now.toISOString().slice(0, 10);
+          if (bill.billing_at === todayStr) {
+            // Live invoice created today: stamp with real-time IST clock
+            return now.toISOString();
+          }
+          // Backdated / future date: keep current hours, minutes, and seconds on that date
+          const [y, m, d] = bill.billing_at.split("-").map(Number);
+          const customDate = new Date(y, m - 1, d, now.getHours(), now.getMinutes(), now.getSeconds());
+          return customDate.toISOString();
+        })()
       });
 
       // Save tip splits for multi-staff bills
@@ -453,10 +474,12 @@ export default function BillingPOS() {
       setAttemptedSubmit(false);
       toast.success(saved.invoice_number + " saved successfully!");
 
-      // 5% Cashback notification on bills > ₹500
-      if (totals.total > 500 && !bill.items?.some(i => i.service_name?.startsWith("Wallet Recharge"))) {
-        const cb = Math.round(totals.total * 0.05);
-        toast.success(`🎁 ₹${cb} (5% Cashback) credited to client's wallet! (Valid 60 days)`);
+      // Cashback notification if enabled
+      if (bill.enable_cashback && !bill.items?.some(i => i.service_name?.startsWith("Wallet Recharge"))) {
+        const customAmt = bill.cashback_amount !== undefined && bill.cashback_amount !== "" ? Number(bill.cashback_amount) : Math.round(totals.total * 0.05);
+        if (customAmt > 0) {
+          toast.success(`🎁 ₹${customAmt} Cashback credited to client's wallet! (Valid 60 days)`);
+        }
       }
 
       await Promise.all([loadHistory(search), reload()]);
@@ -608,7 +631,7 @@ export default function BillingPOS() {
                     ${item.item_type === "product" ? "[PKT] " : ""}${item.service_name}
                   </td>
                   <td style="text-align: center; vertical-align: top;">${item.quantity}</td>
-                  <td style="text-align: right; vertical-align: top;">Rs ${Number((item.item_type === "service" && item.tax_inclusive !== false ? (item.price / 1.05) : item.price) * item.quantity).toFixed(2)}</td>
+                  <td style="text-align: right; vertical-align: top;">Rs ${Number((item.item_type === "service" && item.tax_inclusive !== false ? (item.price / (1 + Number(invoiceData.tax_rate || 5) / 100)) : item.price) * item.quantity).toFixed(2)}</td>
                 </tr>
               `).join("")}
             </tbody>
@@ -719,8 +742,34 @@ export default function BillingPOS() {
     toast.success(`Loaded invoice ${invoiceData.invoice_number} for editing.`);
   };
 
+  const handleOpenVoidModal = (inv) => {
+    setVoidModal({ id: inv.id, invoice_number: inv.invoice_number });
+    setVoidReason("");
+  };
+
+  const handleConfirmVoid = async (e) => {
+    if (e) e.preventDefault();
+    if (!voidReason.trim()) {
+      toast.error("Please enter a reason for voiding this invoice.");
+      return;
+    }
+    setVoiding(true);
+    try {
+      await voidInvoice(voidModal.id, voidReason.trim());
+      toast.success(`Invoice ${voidModal.invoice_number} voided successfully. Stock restored & wallet adjusted.`);
+      setVoidModal(null);
+      setViewInvoiceData(null);
+      loadHistory(search);
+      if (reload) reload();
+    } catch (err) {
+      toast.error(err.message || "Failed to void invoice");
+    } finally {
+      setVoiding(false);
+    }
+  };
+
   const handleDeleteInvoice = async (invoiceId) => {
-    if (!window.confirm("Are you sure you want to delete/void this invoice? This action cannot be undone.")) return;
+    if (!window.confirm("Are you sure you want to permanently delete this invoice? (To keep audit logs, consider Void instead).")) return;
     try {
       await deleteInvoice(invoiceId);
       toast.success("Invoice deleted successfully");
@@ -1273,7 +1322,7 @@ export default function BillingPOS() {
                   {item.item_type === "product" && <span style={{ fontSize: "0.55rem", opacity: 0.7, marginRight: 3 }}>[PKT]</span>}
                   {item.service_name} x{item.quantity}
                 </span>
-                <strong>Rs {Number((item.item_type === "service" && item.tax_inclusive !== false ? (item.price / 1.05) : item.price) * (item.quantity || 1)).toLocaleString("en-IN")}</strong>
+                <strong>Rs {Number((item.item_type === "service" && item.tax_inclusive !== false ? (item.price / (1 + (bill.tax_enabled !== false ? Number(bill.tax_rate || 5) : 0) / 100)) : item.price) * (item.quantity || 1)).toLocaleString("en-IN")}</strong>
               </div>
             ))}
           </div>
@@ -1291,12 +1340,55 @@ export default function BillingPOS() {
               </div>
             )}
             <div className="grand"><span>Grand Total</span><strong>Rs {totals.total.toLocaleString("en-IN")}</strong></div>
-            {totals.total > 500 && !bill.items?.some(i => i.service_name?.startsWith("Wallet Recharge")) && (
-              <div style={{ padding: "0.6rem 0.85rem", background: "rgba(201, 185, 154, 0.12)", border: "1px dashed rgba(201, 185, 154, 0.6)", borderRadius: "4px", display: "flex", alignItems: "center", gap: "0.5rem", marginTop: "0.6rem" }}>
-                <Sparkles size={15} color="#aa820a" />
-                <span style={{ fontSize: "0.72rem", color: "#aa820a", fontWeight: 600 }}>
-                  🎁 5% Cashback (₹{Math.round(totals.total * 0.05).toLocaleString()}) will be added to client's wallet! (Valid 60 days)
-                </span>
+            {totals.total > 0 && !bill.items?.some(i => i.service_name?.startsWith("Wallet Recharge")) && (
+              <div 
+                style={{ 
+                  padding: "0.6rem 0.85rem", 
+                  background: bill.enable_cashback ? "rgba(201, 185, 154, 0.18)" : "rgba(0,0,0,0.02)", 
+                  border: bill.enable_cashback ? "1px solid rgba(201, 185, 154, 0.8)" : "1px dashed #ccc", 
+                  borderRadius: "4px", 
+                  marginTop: "0.6rem"
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.5rem" }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", cursor: "pointer", userSelect: "none", flex: 1, margin: 0 }}>
+                    <input 
+                      type="checkbox" 
+                      checked={!!bill.enable_cashback} 
+                      onChange={(e) => {
+                        const isChecked = e.target.checked;
+                        const defaultAmt = isChecked ? String(Math.round(totals.total * 0.05)) : "";
+                        setBill({ ...bill, enable_cashback: isChecked, cashback_amount: defaultAmt });
+                      }} 
+                      style={{ width: 16, height: 16, accentColor: "#aa820a", cursor: "pointer" }} 
+                    />
+                    <Sparkles size={14} color={bill.enable_cashback ? "#aa820a" : "#888"} />
+                    <span style={{ fontSize: "0.72rem", color: bill.enable_cashback ? "#aa820a" : "#666", fontWeight: bill.enable_cashback ? 700 : 500 }}>
+                      Award Cashback to Wallet
+                    </span>
+                  </label>
+                  {bill.enable_cashback && (
+                    <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                      <span style={{ fontSize: "0.72rem", fontWeight: 700, color: "#aa820a" }}>₹</span>
+                      <input 
+                        type="number" 
+                        min="0"
+                        step="1"
+                        className="form-input" 
+                        value={bill.cashback_amount !== undefined && bill.cashback_amount !== "" ? bill.cashback_amount : Math.round(totals.total * 0.05)} 
+                        onChange={(e) => setBill({ ...bill, cashback_amount: e.target.value })} 
+                        placeholder={String(Math.round(totals.total * 0.05))}
+                        style={{ width: "80px", padding: "2px 6px", fontSize: "0.78rem", fontWeight: 700, color: "#aa820a", textAlign: "right", background: "#fff", border: "1px solid rgba(201, 185, 154, 0.8)", borderRadius: "3px" }}
+                        title="Edit cashback amount in Rupees"
+                      />
+                    </div>
+                  )}
+                </div>
+                {bill.enable_cashback && (
+                  <div style={{ fontSize: "0.62rem", color: "#888", marginTop: "4px", paddingLeft: "1.6rem" }}>
+                    Default is 5% (₹{Math.round(totals.total * 0.05).toLocaleString()}). You can edit the amount above. Valid 60 days.
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -1320,8 +1412,15 @@ export default function BillingPOS() {
           <div className="history-list">
             {history.map((row) => (
               <button type="button" className="history-row" key={row.id} onClick={() => handleViewInvoice(row.id)}>
-                <span><strong>{row.invoice_number}</strong> {row.client_name}</span>
-                <span>Rs {row.total.toLocaleString("en-IN")} <Eye size={14} /></span>
+                <span>
+                  <strong>{row.invoice_number}</strong> {row.client_name}
+                  {row.status === "void" && (
+                    <span style={{ marginLeft: "6px", fontSize: "0.68rem", color: "#ef4444", fontWeight: 700 }}>[VOID]</span>
+                  )}
+                </span>
+                <span style={row.status === "void" ? { textDecoration: "line-through", opacity: 0.6 } : {}}>
+                  Rs {row.total.toLocaleString("en-IN")} <Eye size={14} />
+                </span>
               </button>
             ))}
             {loadingHistory && <div className="admin-empty compact">Loading invoices...</div>}
@@ -1345,8 +1444,15 @@ export default function BillingPOS() {
           <div className="history-list" style={{ maxHeight: "250px" }}>
             {allTimeResults.map((row) => (
               <button type="button" className="history-row" key={row.id} onClick={() => handleViewInvoice(row.id)}>
-                <span><strong>{row.invoice_number}</strong> {row.client_name}</span>
-                <span>Rs {row.total.toLocaleString("en-IN")} <Eye size={14} /></span>
+                <span>
+                  <strong>{row.invoice_number}</strong> {row.client_name}
+                  {row.status === "void" && (
+                    <span style={{ marginLeft: "6px", fontSize: "0.68rem", color: "#ef4444", fontWeight: 700 }}>[VOID]</span>
+                  )}
+                </span>
+                <span style={row.status === "void" ? { textDecoration: "line-through", opacity: 0.6 } : {}}>
+                  Rs {row.total.toLocaleString("en-IN")} <Eye size={14} />
+                </span>
               </button>
             ))}
             {loadingAllTime && <div className="admin-empty compact">Searching invoices...</div>}
@@ -1361,10 +1467,22 @@ export default function BillingPOS() {
         <div className="modal-overlay" style={{ zIndex: 1100 }}>
           <div className="modal" style={{ maxWidth: "450px" }}>
             <div className="modal-header">
-              <div className="modal-title">Receipt Details</div>
+              <div className="modal-title">
+                Receipt Details
+                {viewInvoiceData.invoice.status === "void" && (
+                  <span style={{ color: "#ef4444", fontSize: "0.75rem", fontWeight: 700, marginLeft: "8px" }}>[VOIDED]</span>
+                )}
+              </div>
               <button type="button" className="modal-close" onClick={() => setViewInvoiceData(null)}>×</button>
             </div>
             <div className="modal-body" style={{ padding: "1.5rem" }}>
+              {viewInvoiceData.invoice.status === "void" && (
+                <div style={{ padding: "0.6rem 0.8rem", background: "rgba(239, 68, 68, 0.12)", border: "1px solid #ef4444", borderRadius: "4px", marginBottom: "1rem", color: "#b91c1c", fontSize: "0.78rem" }}>
+                  <strong style={{ display: "block" }}>⚠️ This invoice has been VOIDED.</strong>
+                  {viewInvoiceData.invoice.void_reason && <div style={{ marginTop: "2px" }}>Reason: {viewInvoiceData.invoice.void_reason}</div>}
+                  {viewInvoiceData.invoice.voided_at && <div style={{ fontSize: "0.7rem", opacity: 0.85, marginTop: "2px" }}>Voided at: {new Date(viewInvoiceData.invoice.voided_at).toLocaleString("en-IN")}</div>}
+                </div>
+              )}
               <div className="preview-card" style={{ border: "1px solid var(--a-border)", background: "#fff", padding: "1.5rem" }}>
                 <div className="invoice-brand" style={{ fontSize: "1.4rem", textAlign: "center" }}>
                   {settings?.name || "Toni & Guy Essensuals"}
@@ -1411,7 +1529,7 @@ export default function BillingPOS() {
                         {item.service_name} x{item.quantity}
                         {item.staff_name && <small style={{ display: "block", color: "#888", fontSize: "0.65rem" }}>({item.staff_name})</small>}
                       </span>
-                      <strong>Rs {Number((item.item_type === "service" && item.tax_inclusive !== false ? (item.price / 1.05) : item.price) * item.quantity).toLocaleString("en-IN")}</strong>
+                      <strong>Rs {Number((item.item_type === "service" && item.tax_inclusive !== false ? (item.price / (1 + Number(viewInvoiceData?.invoice?.tax_rate || 5) / 100)) : item.price) * item.quantity).toLocaleString("en-IN")}</strong>
                     </div>
                   ))}
                 </div>
@@ -1463,7 +1581,7 @@ export default function BillingPOS() {
               </div>
             </div>
             <div className="modal-footer">
-              {new Date(viewInvoiceData.invoice.billing_at).toDateString() === new Date().toDateString() && (
+              {viewInvoiceData.invoice.status !== "void" && new Date(viewInvoiceData.invoice.billing_at).toDateString() === new Date().toDateString() && (
                 <>
                   <button 
                     type="button" 
@@ -1477,9 +1595,9 @@ export default function BillingPOS() {
                     type="button" 
                     className="tbl-btn danger" 
                     style={{ background: "rgba(211, 47, 47, 0.1)", border: "1px solid #d32f2f", color: "#d32f2f", fontWeight: "bold" }}
-                    onClick={() => handleDeleteInvoice(viewInvoiceData.invoice.id)}
+                    onClick={() => handleOpenVoidModal(viewInvoiceData.invoice)}
                   >
-                    Delete Invoice
+                    Void Invoice
                   </button>
                 </>
               )}
@@ -1626,6 +1744,45 @@ export default function BillingPOS() {
         }}
         walletTransactions={walletTransactions}
       />
+
+      {/* Void Invoice Confirmation Modal */}
+      {voidModal && (
+        <div className="modal-overlay" style={{ zIndex: 1200 }} onClick={e => e.target === e.currentTarget && !voiding && setVoidModal(null)}>
+          <div className="modal" style={{ maxWidth: "420px" }}>
+            <div className="modal-header">
+              <div className="modal-title" style={{ color: "#ef4444", display: "flex", alignItems: "center", gap: "6px" }}>
+                <span>🚫</span> Void Invoice {voidModal.invoice_number}
+              </div>
+              <button type="button" className="modal-close" onClick={() => !voiding && setVoidModal(null)}>✕</button>
+            </div>
+            <div className="modal-body" style={{ padding: "1.5rem" }}>
+              <form id="void-invoice-form" onSubmit={handleConfirmVoid}>
+                <p style={{ fontSize: "0.82rem", color: "var(--a-muted)", marginBottom: "1.2rem", lineHeight: "1.4" }}>
+                  Voiding this invoice will exclude it from all sales, reports, and revenue calculations. Linked retail product stock will automatically be returned to inventory, and any wallet transactions will be reversed with an audit adjustment.
+                </p>
+                <div className="form-group">
+                  <label className="form-label" style={{ fontWeight: 600 }}>Reason for Voiding *</label>
+                  <textarea
+                    className="form-input"
+                    rows="3"
+                    required
+                    value={voidReason}
+                    onChange={e => setVoidReason(e.target.value)}
+                    placeholder="e.g. Bill entered twice by mistake / Customer requested refund"
+                    style={{ width: "100%", resize: "vertical", marginTop: "4px" }}
+                  />
+                </div>
+              </form>
+            </div>
+            <div className="modal-footer">
+              <button type="button" className="tbl-btn" disabled={voiding} onClick={() => setVoidModal(null)}>Cancel</button>
+              <button type="submit" form="void-invoice-form" className="btn-add" disabled={voiding} style={{ background: "#dc2626", borderColor: "#dc2626", color: "#fff" }}>
+                {voiding ? "Voiding Invoice..." : "Confirm Void"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

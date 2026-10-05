@@ -1,3 +1,5 @@
+import { isProductItem } from "./api";
+
 const PROVIDERS = {
   twilio: "Twilio WhatsApp API",
   meta: "Meta WhatsApp Cloud API",
@@ -203,27 +205,30 @@ export function formatEodReportMessage(report, settings = {}, invoices = [], inv
       // Compile items per staff member
       (inv.invoice_items || []).forEach(item => {
         const itemStaff = item.staff_name || inv.staff_name || "Unknown Stylist";
-        const itemType = item.item_type || "service";
-        const displayPrice = itemType === "service" && item.tax_inclusive !== false ? (Number(item.price || 0) / 1.05) : Number(item.price || 0);
+        const isProd = isProductItem(item, inventory);
+        const taxDivisor = 1 + (Number(inv.tax_rate || 5) / 100);
+        const displayPrice = (!isProd && !isMembership && item.tax_inclusive !== false) ? (Number(item.price || 0) / taxDivisor) : Number(item.price || 0);
         const itemVal = Number(item.quantity || 1) * displayPrice;
 
         if (!staffStats[itemStaff]) {
-          staffStats[itemStaff] = { clients: new Set(), netServices: 0, products: 0, tips: 0, total: 0 };
+          staffStats[itemStaff] = { clients: new Set(), netServices: 0, products: 0, memberships: 0, tips: 0, total: 0 };
         }
         staffStats[itemStaff].clients.add(inv.id);
-        if (itemType === "product") {
+        if (isProd) {
           staffStats[itemStaff].products += itemVal;
+        } else if (isMembership) {
+          staffStats[itemStaff].memberships += itemVal;
         } else {
           staffStats[itemStaff].netServices += itemVal;
         }
         staffStats[itemStaff].total += itemVal;
       });
 
-      // Distribute tips and GST to main stylist
+      // Distribute tips to main stylist
       const mainStylist = inv.staff_name || "Unknown Stylist";
       if (mainStylist) {
         if (!staffStats[mainStylist]) {
-          staffStats[mainStylist] = { clients: new Set(), netServices: 0, products: 0, tips: 0, total: 0 };
+          staffStats[mainStylist] = { clients: new Set(), netServices: 0, products: 0, memberships: 0, tips: 0, total: 0 };
         }
         staffStats[mainStylist].tips += tip;
         staffStats[mainStylist].total += tip;
@@ -235,7 +240,8 @@ export function formatEodReportMessage(report, settings = {}, invoices = [], inv
 
   // Format Staff Performance rows
   const staffRows = Object.entries(staffStats).map(([name, stats]) => {
-    return `${name} | Clients: ${stats.clients.size} | Services: Rs ${stats.netServices} | Products: Rs ${stats.products} | Tips: Rs ${stats.tips} | Total Contribution: Rs ${stats.total}`;
+    const memStr = stats.memberships > 0 ? ` | Memberships: Rs ${Math.round(stats.memberships)}` : "";
+    return `${name} | Clients: ${stats.clients.size} | Services: Rs ${Math.round(stats.netServices)} | Products: Rs ${Math.round(stats.products)}${memStr} | Tips: Rs ${Math.round(stats.tips)} | Total Contribution: Rs ${Math.round(stats.total)}`;
   });
 
   // Format Payment Breakdown rows

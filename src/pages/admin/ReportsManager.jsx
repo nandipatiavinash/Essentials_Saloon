@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { Clock, MessageSquareText, Mail, FileText, Calendar, Send, TrendingUp, BarChart2, Download } from "lucide-react";
 import { useAdmin } from "../../layouts/AdminLayout";
-import { buildAnalytics, sendEodEmailReport, format12HourTime, logReport } from "../../lib/api";
+import { buildAnalytics, sendEodEmailReport, format12HourTime, logReport, isProductItem } from "../../lib/api";
 import { formatEodReportMessage, getWhatsAppProvider, buildWhatsAppLink } from "../../lib/whatsapp";
 import toast from "react-hot-toast";
 
@@ -52,6 +52,7 @@ export default function ReportsManager() {
     const staffStats = {};
     const serviceBreakdown = {};
     const productBreakdown = {};
+    const membershipBreakdown = {};
 
     dayInvoices.forEach((inv) => {
       const gst = Number(inv.tax || 0);
@@ -81,18 +82,26 @@ export default function ReportsManager() {
 
       (inv.invoice_items || []).forEach((item) => {
         const itemStaff = (item.staff_name || inv.staff_name || "Unknown Stylist").trim();
-        const itemType = item.item_type || "service";
+        const isProd = isProductItem(item, inventory);
+        const isWallet = !isProd && (item.item_type === "wallet" || item.service_name?.startsWith("Wallet Recharge"));
+        const isMembership = !isProd && !isWallet && item.item_type === "membership";
         const qty = Number(item.quantity || 1);
         const itemVal = qty * Number(item.price || 0);
 
-
-
-        if (itemType === "product") {
+        if (isProd) {
           if (!productBreakdown[item.service_name]) {
             productBreakdown[item.service_name] = { name: item.service_name, qty: 0, total: 0 };
           }
           productBreakdown[item.service_name].qty += qty;
           productBreakdown[item.service_name].total += itemVal;
+        } else if (isMembership) {
+          if (!membershipBreakdown[item.service_name]) {
+            membershipBreakdown[item.service_name] = { name: item.service_name, qty: 0, total: 0 };
+          }
+          membershipBreakdown[item.service_name].qty += qty;
+          membershipBreakdown[item.service_name].total += itemVal;
+        } else if (isWallet) {
+          // Wallet recharge is prepayment into wallet balance, not a service rendered
         } else {
           if (!serviceBreakdown[item.service_name]) {
             serviceBreakdown[item.service_name] = { name: item.service_name, qty: 0, total: 0 };
@@ -102,11 +111,17 @@ export default function ReportsManager() {
         }
 
         if (!staffStats[itemStaff]) {
-          staffStats[itemStaff] = { clients: new Set(), netServices: 0, products: 0, tips: 0, total: 0 };
+          staffStats[itemStaff] = { clients: new Set(), netServices: 0, products: 0, memberships: 0, tips: 0, total: 0 };
         }
         staffStats[itemStaff].clients.add(inv.id);
-        if (itemType === "product") {
+        if (isProd) {
           staffStats[itemStaff].products += itemVal;
+        } else if (isMembership) {
+          // Membership revenue is tracked separately — it must NOT count as
+          // service revenue for service-based staff incentive purposes.
+          staffStats[itemStaff].memberships += itemVal;
+        } else if (isWallet) {
+          // Wallet recharge excluded from service/product totals
         } else {
           staffStats[itemStaff].netServices += itemVal;
         }
@@ -116,7 +131,7 @@ export default function ReportsManager() {
       const mainStylist = (inv.staff_name || "Unknown Stylist").trim();
       if (mainStylist) {
         if (!staffStats[mainStylist]) {
-          staffStats[mainStylist] = { clients: new Set(), netServices: 0, products: 0, tips: 0, total: 0 };
+          staffStats[mainStylist] = { clients: new Set(), netServices: 0, products: 0, memberships: 0, tips: 0, total: 0 };
         }
         staffStats[mainStylist].tips += tip;
         staffStats[mainStylist].total += tip;
@@ -136,7 +151,8 @@ export default function ReportsManager() {
       paymentBreakdown,
       staffStats,
       serviceBreakdown,
-      productBreakdown
+      productBreakdown,
+      membershipBreakdown
     };
   };
 
@@ -643,10 +659,10 @@ export default function ReportsManager() {
     csvLines.push("");
 
     csvLines.push(`"3. STAFF CONTRIBUTION"`);
-    csvLines.push(`"Staff Name","Clients Served","Services Net (Rs)","Products Net (Rs)","Tips Received (Rs)","Total Contribution (Rs)"`);
+    csvLines.push(`"Staff Name","Clients Served","Services Net (Rs)","Products Net (Rs)","Memberships Net (Rs)","Tips Received (Rs)","Total Contribution (Rs)"`);
     if (Object.keys(data.staffStats).length > 0) {
       Object.entries(data.staffStats).forEach(([name, stats]) => {
-        csvLines.push(`"${name}","${stats.clients.size}","${stats.netServices}","${stats.products}","${stats.tips}","${stats.total}"`);
+        csvLines.push(`"${name}","${stats.clients.size}","${stats.netServices}","${stats.products}","${stats.memberships || 0}","${stats.tips}","${stats.total}"`);
       });
     } else {
       csvLines.push(`"No staff activity."`);
@@ -898,6 +914,7 @@ export default function ReportsManager() {
     const staffMap = {};
     const serviceMap = {};
     const productMap = {};
+    const membershipMap = {};
     const dailyMap = {};
 
     monthInvoices.forEach(inv => {
@@ -929,7 +946,7 @@ export default function ReportsManager() {
 
       // Staff & items
       const mainStylist = (inv.staff_name || "Unknown").trim();
-      if (!staffMap[mainStylist]) staffMap[mainStylist] = { bills: 0, services: 0, products: 0, tips: 0, total: 0 };
+      if (!staffMap[mainStylist]) staffMap[mainStylist] = { bills: 0, services: 0, products: 0, memberships: 0, tips: 0, total: 0 };
       staffMap[mainStylist].bills += 1;
       staffMap[mainStylist].tips += tip;
       staffMap[mainStylist].total += tip;
@@ -939,12 +956,24 @@ export default function ReportsManager() {
         const qty = Number(item.quantity || 1);
         const val = qty * Number(item.price || 0);
         const itemStaff = (item.staff_name || inv.staff_name || "Unknown").trim();
-        if (!staffMap[itemStaff]) staffMap[itemStaff] = { bills: 0, services: 0, products: 0, tips: 0, total: 0 };
-        if (item.item_type === "product") {
+        if (!staffMap[itemStaff]) staffMap[itemStaff] = { bills: 0, services: 0, products: 0, memberships: 0, tips: 0, total: 0 };
+        const isProd = isProductItem(item, inventory);
+        const isWallet = !isProd && (item.item_type === "wallet" || item.service_name?.startsWith("Wallet Recharge"));
+        const isMembership = !isProd && !isWallet && item.item_type === "membership";
+        if (isProd) {
           staffMap[itemStaff].products += val;
           if (!productMap[item.service_name]) productMap[item.service_name] = { qty: 0, total: 0 };
           productMap[item.service_name].qty += qty;
           productMap[item.service_name].total += val;
+        } else if (isMembership) {
+          // Membership revenue is tracked separately from services — it must
+          // not count toward service-based staff incentive figures.
+          staffMap[itemStaff].memberships += val;
+          if (!membershipMap[item.service_name]) membershipMap[item.service_name] = { qty: 0, total: 0 };
+          membershipMap[item.service_name].qty += qty;
+          membershipMap[item.service_name].total += val;
+        } else if (isWallet) {
+          // Wallet recharges
         } else {
           staffMap[itemStaff].services += val;
           if (!serviceMap[item.service_name]) serviceMap[item.service_name] = { qty: 0, total: 0 };
@@ -974,9 +1003,10 @@ export default function ReportsManager() {
       staffMap,
       serviceMap,
       productMap,
+      membershipMap,
       dailyMap,
     };
-  }, [invoices, selectedMonth]);
+  }, [invoices, selectedMonth, inventory]);
 
   // ─── Monthly PDF Export ─────────────────────────────────────────────────────
   const handleMonthlyPDF = () => {
@@ -988,6 +1018,7 @@ export default function ReportsManager() {
 
     const topServices = Object.entries(m.serviceMap).sort((a,b)=>b[1].total-a[1].total).slice(0,10);
     const topProducts = Object.entries(m.productMap).sort((a,b)=>b[1].total-a[1].total).slice(0,10);
+    const topMemberships = Object.entries(m.membershipMap || {}).sort((a,b)=>b[1].total-a[1].total).slice(0,10);
     const staffRows = Object.entries(m.staffMap).sort((a,b)=>b[1].total-a[1].total);
 
     const printWindow = window.open("", "_blank");
@@ -1277,16 +1308,39 @@ export default function ReportsManager() {
     </table>
   ` : ""}
 
+  ${topMemberships.length > 0 ? `
+    <h2>Memberships Sold / Renewed</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Membership Name</th>
+          <th class="right" style="width: 100px;">Qty</th>
+          <th class="right" style="width: 150px;">Revenue (Rs)</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${topMemberships.map(([k,v])=>`
+          <tr>
+            <td><strong>${k}</strong></td>
+            <td class="right">${v.qty}</td>
+            <td class="right">Rs ${v.total.toLocaleString("en-IN")}</td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+  ` : ""}
+
   <h2>Stylist Performance</h2>
   <table>
     <thead>
       <tr>
         <th>Stylist</th>
-        <th class="right" style="width: 80px;">Bills</th>
-        <th class="right" style="width: 120px;">Services (Rs)</th>
-        <th class="right" style="width: 120px;">Products (Rs)</th>
-        <th class="right" style="width: 100px;">Tips (Rs)</th>
-        <th class="right" style="width: 140px;">Total (Rs)</th>
+        <th class="right" style="width: 70px;">Bills</th>
+        <th class="right" style="width: 110px;">Services (Rs)</th>
+        <th class="right" style="width: 110px;">Products (Rs)</th>
+        <th class="right" style="width: 110px;">Memberships (Rs)</th>
+        <th class="right" style="width: 90px;">Tips (Rs)</th>
+        <th class="right" style="width: 120px;">Total (Rs)</th>
       </tr>
     </thead>
     <tbody>
@@ -1296,10 +1350,11 @@ export default function ReportsManager() {
           <td class="right">${v.bills}</td>
           <td class="right">Rs ${v.services.toLocaleString("en-IN")}</td>
           <td class="right">Rs ${v.products.toLocaleString("en-IN")}</td>
+          <td class="right">Rs ${(v.memberships || 0).toLocaleString("en-IN")}</td>
           <td class="right">Rs ${v.tips.toLocaleString("en-IN")}</td>
           <td class="right"><strong>Rs ${v.total.toLocaleString("en-IN")}</strong></td>
         </tr>
-      `).join("") || "<tr><td colspan='6' class='right'>No staff data</td></tr>"}
+      `).join("") || "<tr><td colspan='7' class='right'>No staff data</td></tr>"}
     </tbody>
   </table>
 
@@ -1338,8 +1393,8 @@ export default function ReportsManager() {
     Object.entries(m.serviceMap).sort((a,b)=>b[1].total-a[1].total).forEach(([k,v]) => lines.push(`"${k}","${v.qty}","${v.total}"`));
     lines.push("");
     lines.push(`"STYLIST PERFORMANCE"`);
-    lines.push(`"Stylist","Bills","Services","Products","Tips","Total"`);
-    Object.entries(m.staffMap).forEach(([k,v]) => lines.push(`"${k}","${v.bills}","${v.services}","${v.products}","${v.tips}","${v.total}"`));
+    lines.push(`"Stylist","Bills","Services","Products","Memberships","Tips","Total"`);
+    Object.entries(m.staffMap).forEach(([k,v]) => lines.push(`"${k}","${v.bills}","${v.services}","${v.products}","${v.memberships || 0}","${v.tips}","${v.total}"`));
     const uri = "data:text/csv;charset=utf-8,\uFEFF" + encodeURIComponent(lines.join("\n"));
     const a = document.createElement("a");
     a.href = uri;
@@ -1753,6 +1808,35 @@ export default function ReportsManager() {
             </div>
           )}
 
+          {/* Memberships sold */}
+          {Object.keys(monthlyData.membershipMap || {}).length > 0 && (
+            <div className="table-wrap">
+              <div className="table-header">
+                <div className="table-title" style={{ fontSize: "0.9rem" }}>🎟️ Memberships Sold / Renewed This Month</div>
+              </div>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Membership Package</th>
+                    <th style={{ textAlign: "right" }}>Qty Sold</th>
+                    <th style={{ textAlign: "right" }}>Revenue (Rs)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.entries(monthlyData.membershipMap)
+                    .sort((a, b) => b[1].total - a[1].total)
+                    .map(([name, m]) => (
+                      <tr key={name}>
+                        <td style={{ fontWeight: 600 }}>{name}</td>
+                        <td style={{ textAlign: "right" }}>{m.qty}</td>
+                        <td style={{ textAlign: "right" }}>Rs {m.total.toLocaleString("en-IN")}</td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
           {/* Stylist Performance */}
           <div className="table-wrap">
             <div className="table-header">
@@ -1766,13 +1850,14 @@ export default function ReportsManager() {
                     <th style={{ textAlign: "right" }}>Bills</th>
                     <th style={{ textAlign: "right" }}>Services (Rs)</th>
                     <th style={{ textAlign: "right" }}>Products (Rs)</th>
+                    <th style={{ textAlign: "right" }}>Memberships (Rs)</th>
                     <th style={{ textAlign: "right" }}>Tips (Rs)</th>
                     <th style={{ textAlign: "right" }}>Total (Rs)</th>
                   </tr>
                 </thead>
                 <tbody>
                   {Object.entries(monthlyData.staffMap).length === 0 && (
-                    <tr><td colSpan={6} style={{ textAlign: "center", padding: "2rem", color: "var(--a-muted)" }}>No staff data this month.</td></tr>
+                    <tr><td colSpan={7} style={{ textAlign: "center", padding: "2rem", color: "var(--a-muted)" }}>No staff data this month.</td></tr>
                   )}
                   {Object.entries(monthlyData.staffMap)
                     .sort((a, b) => b[1].total - a[1].total)
@@ -1782,6 +1867,7 @@ export default function ReportsManager() {
                         <td style={{ textAlign: "right" }}>{s.bills}</td>
                         <td style={{ textAlign: "right" }}>Rs {s.services.toLocaleString("en-IN")}</td>
                         <td style={{ textAlign: "right" }}>Rs {s.products.toLocaleString("en-IN")}</td>
+                        <td style={{ textAlign: "right" }}>Rs {(s.memberships || 0).toLocaleString("en-IN")}</td>
                         <td style={{ textAlign: "right" }}>Rs {s.tips.toLocaleString("en-IN")}</td>
                         <td style={{ textAlign: "right", fontWeight: 700 }}>Rs {s.total.toLocaleString("en-IN")}</td>
                       </tr>

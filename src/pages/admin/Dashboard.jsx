@@ -1,6 +1,6 @@
 import { useAdmin } from "../../layouts/AdminLayout";
 import { Link, useNavigate } from "react-router-dom";
-import { buildAnalytics, cleanDemographicData } from "../../lib/api";
+import { buildAnalytics, cleanDemographicData, isProductItem } from "../../lib/api";
 import { AlertTriangle, Package, Star, MessageSquare } from "lucide-react";
 import toast from "react-hot-toast";
 import { useState, useMemo } from "react";
@@ -80,10 +80,15 @@ export default function Dashboard() {
 
       (inv.invoice_items || []).forEach((item) => {
         const itemVal = Number(item.quantity || 1) * Number(item.price || 0);
-        if (item.item_type === "product") {
+        const isProd = isProductItem(item, inventory);
+        const isWallet = item.item_type === "wallet" || item.service_name?.startsWith("Wallet Recharge");
+        const isMem = !isProd && !isWallet && item.item_type === "membership";
+        if (isProd) {
           productsTotal += itemVal;
-        } else if (item.item_type === "membership") {
+        } else if (isMem) {
           membershipsTotal += itemVal;
+        } else if (isWallet) {
+          // Prepayment into customer wallet balance
         } else {
           servicesTotal += itemVal;
         }

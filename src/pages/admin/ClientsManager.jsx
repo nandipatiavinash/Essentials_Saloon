@@ -322,7 +322,7 @@ export default function ClientsManager() {
                     ${item.item_type === "product" ? "[PKT] " : ""}${item.service_name}
                   </td>
                   <td style="text-align: center; vertical-align: top;">${item.quantity}</td>
-                  <td style="text-align: right; vertical-align: top;">Rs ${Number((item.item_type === "service" && item.tax_inclusive !== false ? (item.price / 1.05) : item.price) * item.quantity).toFixed(2)}</td>
+                  <td style="text-align: right; vertical-align: top;">Rs ${Number((item.item_type === "service" && item.tax_inclusive !== false ? (item.price / (1 + Number(invoiceData.tax_rate || 5) / 100)) : item.price) * item.quantity).toFixed(2)}</td>
                 </tr>
               `).join("")}
             </tbody>
@@ -701,7 +701,7 @@ export default function ClientsManager() {
                         {item.service_name} x{item.quantity}
                         {item.staff_name && <small style={{ display: "block", color: "#888", fontSize: "0.65rem" }}>({item.staff_name})</small>}
                       </span>
-                      <strong>Rs {Number((item.item_type === "service" && item.tax_inclusive !== false ? (item.price / 1.05) : item.price) * item.quantity).toLocaleString("en-IN")}</strong>
+                      <strong>Rs {Number((item.item_type === "service" && item.tax_inclusive !== false ? (item.price / (1 + Number(viewInvoiceData?.invoice?.tax_rate || 5) / 100)) : item.price) * item.quantity).toLocaleString("en-IN")}</strong>
                     </div>
                   ))}
                 </div>

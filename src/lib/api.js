@@ -32,6 +32,22 @@ export function parseDateOrIST(val) {
   return date;
 }
 
+export function isProductItem(item, inventory = []) {
+  if (!item) return false;
+  if (item.item_type === "product" || item.inventory_id != null) return true;
+  if (item.item_type === "membership" || item.item_type === "wallet") return false;
+
+  const name = (item.service_name || "").toLowerCase().trim();
+  if (!name) return false;
+
+  // Only check items that exist in inventory (exact name match, case-insensitive)
+  // No smart keyword guessing, to prevent services (e.g. "Hair Mask Spa", "Shampoo & Blowdry") from being misclassified
+  return (inventory || []).some(inv => {
+    const invName = (inv.name || "").toLowerCase().trim();
+    return invName && name === invName;
+  });
+}
+
 // ─── Fetch all public data ────────────────────────────────────────────────────
 export async function fetchPublicData() {
   const [cats, svcs, offs, gal, settRes] = await Promise.all([
@@ -323,7 +339,7 @@ export async function saveInvoice(payload) {
       const rand = Math.floor(10000 + Math.random() * 90000);
       mId = `MEM-${year}-${rand}`;
     }
-    if (!mTier || mTier === "Regular") mTier = "Member";
+    if (!mTier || mTier === "Regular" || mTier === "Member") mTier = "Gold";
     if (!mStart) mStart = parseDateOrIST(payload.billing_at).toISOString().slice(0, 10);
     if (!mEnd) {
       const nextYear = parseDateOrIST(payload.billing_at);
@@ -384,23 +400,30 @@ export async function saveInvoice(payload) {
     if (deleteError) throw deleteError;
   }
 
-  const itemRows = payload.items.map((item) => ({
-    invoice_id: invoice.id,
-    service_id: item.item_type === "product" ? null : (item.service_id || null),
-    inventory_id: item.item_type === "product" ? (item.inventory_id || null) : null,
-    service_name: item.service_name,
-    item_type: item.item_type || "service",
-    quantity: Number(item.quantity || 1),
-    price: Number(item.price || 0),
-    total: Number(item.quantity || 1) * Number(item.price || 0),
-    staff_name: item.staff_name || payload.staff_name || null,
-    tax_inclusive: item.item_type === "service" ? (item.tax_inclusive !== false) : true,
-  }));
+  const itemRows = payload.items.map((item) => {
+    const isProd = isProductItem(item, payload.inventory || []);
+    const isWallet = item.item_type === "wallet" || item.service_name?.startsWith("Wallet Recharge");
+    const isMem = !isProd && !isWallet && item.item_type === "membership";
+    const resolvedType = isProd ? "product" : (isWallet ? "wallet" : (isMem ? "membership" : (item.item_type || "service")));
+
+    return {
+      invoice_id: invoice.id,
+      service_id: resolvedType === "service" ? (item.service_id || null) : null,
+      inventory_id: resolvedType === "product" ? (item.inventory_id || null) : null,
+      service_name: item.service_name,
+      item_type: resolvedType,
+      quantity: Number(item.quantity || 1),
+      price: Number(item.price || 0),
+      total: Number(item.quantity || 1) * Number(item.price || 0),
+      staff_name: item.staff_name || payload.staff_name || null,
+      tax_inclusive: resolvedType === "service" ? (item.tax_inclusive !== false) : true,
+    };
+  });
   const { error: itemsError } = await t("invoice_items").insert(itemRows);
   if (itemsError) throw itemsError;
 
   // Decrement stock for any product items
-  const productItems = payload.items.filter(item => item.item_type === "product" && item.inventory_id);
+  const productItems = payload.items.filter(item => (item.item_type === "product" || isProductItem(item, payload.inventory || [])) && item.inventory_id);
   for (const pItem of productItems) {
     const { data: invRow } = await t("inventory").select("stock_qty").eq("id", pItem.inventory_id).single();
     if (invRow) {
@@ -429,25 +452,24 @@ export async function saveInvoice(payload) {
   if (payload.payment_method === "Wallet Balance" || Number(payload.wallet_amount_used || 0) > 0) {
     const redeemAmount = payload.payment_method === "Wallet Balance" ? invoice.total : Number(payload.wallet_amount_used);
     if (redeemAmount > 0) {
-      try {
-        await redeemWalletBalance({
-          customer_id: customer.id,
-          invoice_id: invoice.id,
-          wallet_amount: redeemAmount,
-          mobile,
-          client_name: payload.client_name.trim(),
-          invoice_number: invoice.invoice_number,
-        });
-      } catch (walletErr) {
-        console.warn("Wallet redemption warning (proceeding with invoice):", walletErr.message);
-      }
+      await redeemWalletBalance({
+        customer_id: customer.id,
+        invoice_id: invoice.id,
+        wallet_amount: redeemAmount,
+        mobile,
+        client_name: payload.client_name.trim(),
+        invoice_number: invoice.invoice_number,
+      });
     }
   }
 
-  // Handle 5% Direct Bill Cashback into Wallet Balance for bills > ₹500
+  // Handle Direct Bill Cashback into Wallet Balance (ONLY if enabled by cashier)
   const isWalletRecharge = payload.items?.some(it => it.service_name?.startsWith("Wallet Recharge"));
-  if (!isWalletRecharge && totals.total > 500) {
-    const cashbackAmount = Math.round(totals.total * 0.05 * 100) / 100;
+  if (payload.enable_cashback && !isWalletRecharge) {
+    const customCb = payload.cashback_amount !== undefined && payload.cashback_amount !== "" && !isNaN(payload.cashback_amount)
+      ? Number(payload.cashback_amount)
+      : Math.round(totals.total * 0.05 * 100) / 100;
+    const cashbackAmount = Math.max(0, customCb);
     if (cashbackAmount > 0) {
       try {
         await awardBillCashback({
@@ -605,7 +627,7 @@ export async function rechargeCustomerWallet({ customer_id, mobile, client_name,
   await t("invoice_items").insert({
     invoice_id: invoice.id,
     service_name: `Wallet Recharge (Value: ₹${walletVal})`,
-    item_type: "membership",
+    item_type: "wallet",
     quantity: 1,
     price: payAmt,
     total: payAmt,
@@ -699,9 +721,22 @@ export async function awardBillCashback({ customer_id, invoice_id, bill_amount, 
 export async function redeemWalletBalance({ customer_id, invoice_id, wallet_amount, mobile, client_name, invoice_number }) {
   if (!customer_id || wallet_amount <= 0) return null;
 
+  // 1. Verify customer has sufficient wallet balance before deducting
+  try {
+    const { data: cust } = await t("customers").select("wallet_balance").eq("id", customer_id).maybeSingle();
+    if (cust && cust.wallet_balance !== undefined) {
+      const currentBal = Number(cust.wallet_balance || 0);
+      if (currentBal < wallet_amount) {
+        throw new Error(`Insufficient wallet balance. Available: ₹${currentBal}, Requested: ₹${wallet_amount}`);
+      }
+    }
+  } catch (checkErr) {
+    if (checkErr.message?.includes("Insufficient wallet balance")) throw checkErr;
+  }
+
   const auditNote = `Redeemed ₹${wallet_amount} Wallet Balance for Invoice #${invoice_number || 'N/A'}`;
 
-  // Update customer wallet_balance if column exists
+  // 2. Update customer wallet_balance if column exists
   try {
     const { data: cust } = await t("customers").select("wallet_balance").eq("id", customer_id).maybeSingle();
     if (cust && cust.wallet_balance !== undefined) {
@@ -710,27 +745,27 @@ export async function redeemWalletBalance({ customer_id, invoice_id, wallet_amou
       await t("customers").update({ wallet_balance: newBal }).eq("id", customer_id);
     }
   } catch (custErr) {
+    if (custErr.message?.includes("Insufficient wallet balance")) throw custErr;
     console.warn("Could not update wallet_balance on customers table:", custErr.message);
   }
 
-  // Insert wallet transaction record
-  try {
-    const { data: tx, error } = await t("wallet_transactions").insert({
-      customer_id,
-      mobile: mobile || "",
-      type: "recharge_debit",
-      amount: wallet_amount,
-      paid_amount: 0,
-      bonus_amount: 0,
-      invoice_id,
-      notes: auditNote,
-    }).select().single();
+  // 3. Insert wallet transaction record
+  const { data: tx, error } = await t("wallet_transactions").insert({
+    customer_id,
+    mobile: mobile || "",
+    type: "recharge_debit",
+    amount: wallet_amount,
+    paid_amount: 0,
+    bonus_amount: 0,
+    invoice_id,
+    notes: auditNote,
+  }).select().single();
 
-    if (error) console.warn("Wallet debit ledger warning:", error.message);
-    return tx;
-  } catch (txErr) {
-    console.warn("Wallet debit ledger insert error:", txErr.message);
+  if (error) {
+    console.warn("Wallet debit ledger warning:", error.message);
+    throw error;
   }
+  return tx;
 }
 
 export async function revertWalletTransaction(transactionId, reason = "Mistake / Cancelled by Staff") {
@@ -785,6 +820,78 @@ export async function revertWalletTransaction(transactionId, reason = "Mistake /
   return { success: true, customerId, newBalance: newBal };
 }
 
+// Clear all historical cashbacks across all customers
+export async function clearAllCashbacks() {
+  // 1. Fetch all cashback transactions
+  const { data: cbTxs, error: fetchErr } = await t("wallet_transactions")
+    .select("id, customer_id, amount")
+    .eq("type", "cashback_credit");
+  if (fetchErr) throw fetchErr;
+
+  if (!cbTxs || cbTxs.length === 0) {
+    return { count: 0, totalCleared: 0 };
+  }
+
+  // 2. Group total cashback by customer_id
+  const customerTotals = {};
+  let totalCleared = 0;
+  for (const tx of cbTxs) {
+    if (!tx.customer_id) continue;
+    customerTotals[tx.customer_id] = (customerTotals[tx.customer_id] || 0) + Number(tx.amount || 0);
+    totalCleared += Number(tx.amount || 0);
+  }
+
+  // 3. Deduct cashbacks from customer wallet balances
+  for (const [custId, cbAmount] of Object.entries(customerTotals)) {
+    try {
+      const { data: cust } = await t("customers").select("wallet_balance").eq("id", custId).maybeSingle();
+      if (cust) {
+        const currentBal = Number(cust.wallet_balance || 0);
+        const newBal = Math.max(0, currentBal - cbAmount);
+        await t("customers").update({ wallet_balance: newBal }).eq("id", custId);
+      }
+    } catch (e) {
+      console.warn(`Could not update balance for customer ${custId}:`, e.message);
+    }
+  }
+
+  // 4. Delete the cashback transaction rows
+  const ids = cbTxs.map(t => t.id);
+  const { error: delErr } = await t("wallet_transactions").delete().in("id", ids);
+  if (delErr) throw delErr;
+
+  return { count: cbTxs.length, totalCleared };
+}
+
+// Clear all cashbacks for a single customer
+export async function clearCustomerCashbacks(customerId) {
+  if (!customerId) throw new Error("Customer ID required");
+
+  const { data: cbTxs, error: fetchErr } = await t("wallet_transactions")
+    .select("id, amount")
+    .eq("customer_id", customerId)
+    .eq("type", "cashback_credit");
+  if (fetchErr) throw fetchErr;
+
+  if (!cbTxs || cbTxs.length === 0) {
+    return { count: 0, totalCleared: 0 };
+  }
+
+  const totalToDeduct = cbTxs.reduce((sum, t) => sum + Number(t.amount || 0), 0);
+
+  const { data: cust } = await t("customers").select("wallet_balance").eq("id", customerId).maybeSingle();
+  const currentBal = Number(cust?.wallet_balance || 0);
+  const newBal = Math.max(0, currentBal - totalToDeduct);
+
+  await t("customers").update({ wallet_balance: newBal }).eq("id", customerId);
+
+  const ids = cbTxs.map(t => t.id);
+  const { error: delErr } = await t("wallet_transactions").delete().in("id", ids);
+  if (delErr) throw delErr;
+
+  return { count: cbTxs.length, totalCleared: totalToDeduct, newBalance: newBal };
+}
+
 export async function deleteInvoice(id) {
   const { data: inv, error: invError } = await t("invoices").select("customer_id").eq("id", id).maybeSingle();
   if (invError) throw invError;
@@ -831,6 +938,84 @@ export async function deleteInvoice(id) {
   if (error) throw error;
 
   if (inv?.customer_id) {
+    await refreshCustomerRollup(inv.customer_id);
+  }
+}
+
+// Soft-void: unlike deleteInvoice, this keeps the invoice row (status='void',
+// with a reason and timestamp) so revenue/reports exclude it while the record
+// stays available for audit. Stock and wallet effects are reversed the same
+// way deleteInvoice reverses them, but wallet ledger entries are reversed via
+// a new 'adjustment' entry rather than deleted, to keep the ledger traceable.
+export async function voidInvoice(id, reason, voidedBy = null) {
+  if (!reason || !reason.trim()) throw new Error("A reason is required to void an invoice.");
+
+  const { data: inv, error: invError } = await t("invoices").select("*").eq("id", id).maybeSingle();
+  if (invError) throw invError;
+  if (!inv) throw new Error("Invoice not found.");
+  if (inv.status === "void") throw new Error("This invoice is already void.");
+
+  const { data: items, error: itemsError } = await t("invoice_items").select("*").eq("invoice_id", id);
+  if (itemsError) throw itemsError;
+
+  // Restore inventory product quantities
+  const productItems = (items || []).filter(item => item.item_type === "product" && item.inventory_id);
+  for (const pItem of productItems) {
+    const { data: invRow } = await t("inventory").select("stock_qty").eq("id", pItem.inventory_id).single();
+    if (invRow) {
+      const newQty = Number(invRow.stock_qty) + Number(pItem.quantity || 1);
+      await t("inventory").update({ stock_qty: newQty, updated_at: getISTDate().toISOString() }).eq("id", pItem.inventory_id);
+    }
+  }
+
+  // Reverse any linked wallet transactions by recording an offsetting
+  // 'adjustment' ledger entry (not deleting the original), so the customer's
+  // wallet history still shows both the original event and its reversal.
+  try {
+    const { data: linkedTxs } = await t("wallet_transactions").select("*").eq("invoice_id", id);
+    if (linkedTxs && linkedTxs.length > 0) {
+      for (const tx of linkedTxs) {
+        if (!tx.customer_id) continue;
+        const { data: cust } = await t("customers").select("wallet_balance").eq("id", tx.customer_id).maybeSingle();
+        const curBal = Number(cust?.wallet_balance || 0);
+        let delta = 0;
+        if (tx.type === "recharge_credit" || tx.type === "cashback_credit") {
+          delta = -Number(tx.amount || 0);
+        } else if (tx.type === "recharge_debit") {
+          delta = Number(tx.amount || 0);
+        }
+        if (delta === 0) continue;
+        const updatedBal = Math.max(0, curBal + delta);
+        await t("customers").update({ wallet_balance: updatedBal }).eq("id", tx.customer_id);
+        await t("wallet_transactions").insert({
+          customer_id: tx.customer_id,
+          mobile: tx.mobile,
+          type: "adjustment",
+          amount: delta,
+          invoice_id: id,
+          notes: `Reversal of ${tx.type} for voided invoice ${inv.invoice_number}: ${reason.trim()}`,
+        });
+      }
+    }
+  } catch (wErr) {
+    console.warn("Error reversing linked wallet transactions on invoice void:", wErr.message);
+  }
+
+  let { error } = await t("invoices")
+    .update({
+      status: "void",
+      void_reason: reason.trim(),
+      voided_at: getISTDate().toISOString(),
+      voided_by: voidedBy,
+    })
+    .eq("id", id);
+  if (error && (error.message?.includes("void_reason") || error.code === "PGRST204" || error.code === "42703")) {
+    const fallbackRes = await t("invoices").update({ status: "void" }).eq("id", id);
+    error = fallbackRes.error;
+  }
+  if (error) throw error;
+
+  if (inv.customer_id) {
     await refreshCustomerRollup(inv.customer_id);
   }
 }
@@ -965,7 +1150,7 @@ function normBooking(row) {
 
 export function calculateInvoiceTotals(payload) {
   const items = payload.items ?? [];
-  const discountPct = Number(payload.discount || 0);
+  const discountPct = Math.max(0, Math.min(100, Number(payload.discount || 0)));
   const taxRate = payload.tax_enabled === false ? 0 : Number(payload.tax_rate || 5);
   const taxEnabled = payload.tax_enabled !== false;
 
@@ -975,28 +1160,35 @@ export function calculateInvoiceTotals(payload) {
   let totalDiscount = 0;
   let totalTaxable = 0;
   let totalTax = 0;
+  let productSubtotalDiscounted = 0;
+  let membershipSubtotalDiscounted = 0;
 
   items.forEach(item => {
     const qty = Number(item.quantity || 1);
     const price = Number(item.price || 0);
     const rawTotal = qty * price;
 
-    if (item.item_type === "product") {
+    const isProd = isProductItem(item, payload.inventory || []);
+
+    if (isProd || item.item_type === "product") {
       productSubtotal += rawTotal;
       const itemDiscount = rawTotal * (discountPct / 100);
       totalDiscount += itemDiscount;
+      productSubtotalDiscounted += (rawTotal - itemDiscount);
       return;
     }
-    if (item.item_type === "membership") {
+    if (item.item_type === "membership" || item.item_type === "wallet" || item.service_name?.startsWith("Wallet Recharge")) {
       membershipSubtotal += rawTotal;
       const itemDiscount = rawTotal * (discountPct / 100);
       totalDiscount += itemDiscount;
+      membershipSubtotalDiscounted += (rawTotal - itemDiscount);
       return;
     }
 
     // It's a service
     const isInclusive = item.tax_inclusive !== false;
-    const rawBase = isInclusive ? (rawTotal / 1.05) : rawTotal;
+    const taxDivisor = 1 + (taxEnabled ? taxRate : 0) / 100;
+    const rawBase = isInclusive ? (rawTotal / taxDivisor) : rawTotal;
     serviceSubtotal += rawBase;
 
     const itemDiscount = rawBase * (discountPct / 100);
@@ -1005,30 +1197,15 @@ export function calculateInvoiceTotals(payload) {
     const discountedBase = rawBase - itemDiscount;
 
     if (taxEnabled && taxRate > 0) {
-      if (isInclusive) {
-        const tax = discountedBase * (taxRate / 100);
-        totalTaxable += discountedBase;
-        totalTax += tax;
-      } else {
-        const base = discountedBase;
-        const tax = discountedBase * (taxRate / 100);
-        totalTaxable += base;
-        totalTax += tax;
-      }
+      const tax = discountedBase * (taxRate / 100);
+      totalTaxable += discountedBase;
+      totalTax += tax;
     } else {
       totalTaxable += discountedBase;
     }
   });
 
   const subtotal = serviceSubtotal + productSubtotal + membershipSubtotal;
-
-  const productSubtotalDiscounted = items
-    .filter(item => item.item_type === "product")
-    .reduce((sum, item) => sum + (Number(item.quantity || 1) * Number(item.price || 0) * (1 - discountPct / 100)), 0);
-
-  const membershipSubtotalDiscounted = items
-    .filter(item => item.item_type === "membership")
-    .reduce((sum, item) => sum + (Number(item.quantity || 1) * Number(item.price || 0) * (1 - discountPct / 100)), 0);
 
   const tip = Number(payload.tip || 0);
   const totalBeforeRounding = totalTaxable + totalTax + productSubtotalDiscounted + membershipSubtotalDiscounted + tip;
@@ -1116,6 +1293,9 @@ export function buildAnalytics(invoices = []) {
     
     customerTotals[invoice.client_name || "Walk-in"] = (customerTotals[invoice.client_name || "Walk-in"] || 0) + Number(invoice.total || 0);
     (invoice.invoice_items || []).forEach((item) => {
+      if (item.item_type === "product" || isProductItem(item) || item.item_type === "membership" || item.item_type === "wallet" || item.service_name?.startsWith("Wallet Recharge")) {
+        return;
+      }
       const name = item.service_name || "Service";
       serviceTotals[name] = (serviceTotals[name] || 0) + Number(item.total || 0);
     });
@@ -1451,7 +1631,10 @@ export async function createCustomer(data) {
 }
 
 // ─── Reset Database - Clear Client and Transaction/Billing History ──────────
-export async function cleanDemographicData() {
+export async function cleanDemographicData(passphrase) {
+  if (passphrase !== "CONFIRM_DELETE_ALL_DATA_PERMANENTLY") {
+    throw new Error("Unauthorized: Destructive action requires explicit confirmation passphrase.");
+  }
   // 1. Delete invoice items
   const { error: errItems } = await supabase.from("invoice_items").delete().gte("quantity", 0);
   if (errItems) throw errItems;
@@ -1501,7 +1684,8 @@ export async function saveTipSplits(invoiceId, splits = []) {
 
 // ─── Review Token ─────────────────────────────────────────────────────────────
 export async function generateAndSaveReviewToken(invoiceId) {
-  const token = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  const uuid = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+  const token = `${uuid.slice(0, 18)}-${Math.random().toString(36).slice(2, 8)}`;
   const { error } = await t("invoices").update({ review_token: token, review_sent: true }).eq("id", invoiceId);
   if (error) throw error;
   return token;
@@ -1576,58 +1760,88 @@ export async function saveStaffPayment(payload) {
 }
 
 export async function markSalaryPaid(paymentId, staffId, workMonth, paymentDate, netPayable, staffName, paymentMethod = "Cash") {
-  const { error: payErr } = await t("staff_payments")
+  // Idempotency guard: only transition status="unpaid" -> "paid". If this payment
+  // was already marked paid (e.g. a retried request after a dropped connection),
+  // updatedRows comes back empty and we stop here — this prevents the Salaries
+  // expense below from ever being inserted twice for the same payroll record.
+  const { data: updatedRows, error: payErr } = await t("staff_payments")
     .update({ status: "paid", payment_date: paymentDate, payment_method: paymentMethod, updated_at: new Date().toISOString() })
-    .eq("id", paymentId);
+    .eq("id", paymentId)
+    .eq("status", "unpaid")
+    .select("id");
   if (payErr) throw payErr;
+  if (!updatedRows || updatedRows.length === 0) {
+    return { alreadyPaid: true };
+  }
 
-  const { error: advErr } = await t("staff_advances")
-    .update({ status: "deducted", salary_payment_id: paymentId })
-    .eq("staff_id", staffId)
-    .eq("work_month", workMonth)
-    .eq("status", "pending");
-  if (advErr) throw advErr;
+  try {
+    const { error: advErr } = await t("staff_advances")
+      .update({ status: "deducted", salary_payment_id: paymentId })
+      .eq("staff_id", staffId)
+      .eq("work_month", workMonth)
+      .eq("status", "pending");
+    if (advErr) throw advErr;
 
-  const { error: expErr } = await t("expenses").insert({
-    category: "Salaries",
-    description: `Salary paid to ${staffName} for ${workMonth}`,
-    amount: Number(netPayable),
-    date: paymentDate,
-    payment_method: paymentMethod,
-    month: paymentDate.slice(0, 7),
-    is_system_entry: true,
-    source_id: paymentId,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  });
-  if (expErr) throw expErr;
+    const { error: expErr } = await t("expenses").insert({
+      category: "Salaries",
+      description: `Salary paid to ${staffName} for ${workMonth}`,
+      amount: Number(netPayable),
+      date: paymentDate,
+      payment_method: paymentMethod,
+      month: paymentDate.slice(0, 7),
+      is_system_entry: true,
+      source_id: paymentId,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    });
+    if (expErr) throw expErr;
+  } catch (err) {
+    // Revert status to unpaid so user can retry safely
+    await t("staff_payments").update({ status: "unpaid", payment_date: null }).eq("id", paymentId);
+    throw err;
+  }
 }
 
 // ─── Staff Advances ───────────────────────────────────────────────────────────
 export async function saveStaffAdvance(payload) {
+  const isFromDrawer = payload.disbursed_from !== "owner_pocket" && payload.disbursed_from !== "personal_upi";
+  const sourceLabel = isFromDrawer 
+    ? "Cash Drawer" 
+    : (payload.disbursed_from === "personal_upi" ? "Personal UPI / Pocket" : "Owner Pocket");
+
+  // Include funding source tag in notes for clarity and persistence across schemas
+  const userNotes = payload.notes ? payload.notes.trim() : "";
+  const composedNotes = userNotes.startsWith("[Source:")
+    ? userNotes
+    : `[Source: ${sourceLabel}] ${userNotes}`.trim();
+
   const { data, error } = await t("staff_advances").insert({
     staff_id: payload.staff_id,
     amount: Number(payload.amount),
     date: payload.date || new Date().toISOString().slice(0, 10),
     work_month: payload.work_month,
     status: "pending",
-    notes: payload.notes || null,
+    notes: composedNotes || null,
   }).select().single();
   if (error) throw error;
 
-  const staffName = payload.staff_name || "Staff";
-  await t("expenses").insert({
-    category: "Staff Advance",
-    description: `Advance issued to ${staffName}`,
-    amount: Number(payload.amount),
-    date: payload.date || new Date().toISOString().slice(0, 10),
-    payment_method: "Cash",
-    month: (payload.date || new Date().toISOString().slice(0, 10)).slice(0, 7),
-    is_system_entry: true,
-    source_id: data.id,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  });
+  // ONLY deduct from daily Cash Drawer expenses if disbursed from the drawer!
+  // If given from Owner Pocket / Personal UPI, it must NOT reduce the cash drawer.
+  if (isFromDrawer) {
+    const staffName = payload.staff_name || "Staff";
+    await t("expenses").insert({
+      category: "Staff Advance",
+      description: `Advance issued to ${staffName}`,
+      amount: Number(payload.amount),
+      date: payload.date || new Date().toISOString().slice(0, 10),
+      payment_method: "Cash",
+      month: (payload.date || new Date().toISOString().slice(0, 10)).slice(0, 7),
+      is_system_entry: true,
+      source_id: data.id,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    });
+  }
 
   return data;
 }
@@ -1636,7 +1850,7 @@ export async function deleteStaffAdvance(id) {
   const { error } = await t("staff_advances").delete().eq("id", id).eq("status", "pending");
   if (error) throw error;
 
-  // Delete the corresponding cash drawer payout expense entry
+  // Delete the corresponding cash drawer payout expense entry (if one was created)
   await t("expenses").delete().eq("source_id", id).eq("is_system_entry", true);
 }
 

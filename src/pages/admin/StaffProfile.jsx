@@ -1,15 +1,19 @@
 import { useMemo, useState } from "react";
 import { ArrowLeft, TrendingUp, Users, Scissors, Clock, Award, Calendar, DollarSign, ChevronLeft, ChevronRight } from "lucide-react";
 import { useAdmin } from "../../layouts/AdminLayout";
-import { format12HourTime } from "../../lib/api";
+import { format12HourTime, isProductItem } from "../../lib/api";
 import { useNavigate, useParams } from "react-router-dom";
 
 export default function StaffProfile() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { staff, attendance, invoices, tipSplits, staffPayments, staffAdvances } = useAdmin();
+  const { staff, attendance, invoices, tipSplits, staffPayments, staffAdvances, inventory } = useAdmin();
 
   const member = useMemo(() => (staff || []).find(s => String(s.id) === String(id)), [staff, id]);
+
+  const invProductNames = useMemo(() => {
+    return new Set((inventory || []).map(i => (i.name || "").trim().toLowerCase()));
+  }, [inventory]);
 
   const memberAdvances = useMemo(() => {
     return (staffAdvances || []).filter(a => a.staff_id === member?.id);
@@ -63,20 +67,24 @@ export default function StaffProfile() {
     const mName = member.name.trim().toLowerCase();
     let serviceSales = 0;
     let productSales = 0;
+    let membershipSales = 0;
     let servicesCount = 0;
     const clientSet = new Set();
-    
+
     // Compute tips from tipSplits for this stylist in this period
-    const stylistTips = (tipSplits || []).filter(ts => 
-      ts.staff_name && ts.staff_name.trim().toLowerCase() === mName && 
+    const stylistTips = (tipSplits || []).filter(ts =>
+      ts.staff_name && ts.staff_name.trim().toLowerCase() === mName &&
       invoicesForStaff.some(inv => inv.id === ts.invoice_id)
     );
     const tipsEarned = stylistTips.reduce((sum, ts) => sum + Number(ts.tip_amount || 0), 0);
 
-    // All services and signups this staff performed
+    // All services this staff performed
     const svcMap = {};
     // All products this staff sold
     const prodMap = {};
+    // All memberships this staff sold/renewed — kept separate from services:
+    // membership revenue must NOT count as service revenue or service count.
+    const membershipMap = {};
 
     invoicesForStaff.forEach(inv => {
       clientSet.add(inv.customer_id || inv.mobile);
@@ -93,7 +101,9 @@ export default function StaffProfile() {
           const price = Number(item.price || 0);
           const rawTotal = qty * price;
 
-          if (item.item_type === "product") {
+          const isProd = isProductItem(item, inventory);
+
+          if (isProd) {
             const itemDiscount = rawTotal * discountPct;
             const netVal = rawTotal - itemDiscount;
             productSales += netVal;
@@ -102,20 +112,23 @@ export default function StaffProfile() {
             }
             prodMap[item.service_name].qty += qty;
             prodMap[item.service_name].total += netVal;
-          } else if (item.item_type === "membership") {
-            const itemDiscount = rawTotal * discountPct;
-            const netVal = rawTotal - itemDiscount;
-            serviceSales += netVal;
-            servicesCount += qty;
-            if (!svcMap[item.service_name]) {
-              svcMap[item.service_name] = { name: item.service_name, qty: 0, total: 0 };
+          } else if (item.item_type === "membership" || item.item_type === "wallet") {
+            const isWallet = item.item_type === "wallet" || item.service_name?.startsWith("Wallet Recharge");
+            if (!isWallet) {
+              const itemDiscount = rawTotal * discountPct;
+              const netVal = rawTotal - itemDiscount;
+              membershipSales += netVal;
+              if (!membershipMap[item.service_name]) {
+                membershipMap[item.service_name] = { name: item.service_name, qty: 0, total: 0 };
+              }
+              membershipMap[item.service_name].qty += qty;
+              membershipMap[item.service_name].total += netVal;
             }
-            svcMap[item.service_name].qty += qty;
-            svcMap[item.service_name].total += netVal;
           } else {
             // service
             const isInclusive = item.tax_inclusive !== false;
-            const rawBase = isInclusive ? (rawTotal / 1.05) : rawTotal;
+            const taxDivisor = 1 + (Number(inv?.tax_rate || 5) / 100);
+            const rawBase = isInclusive ? (rawTotal / taxDivisor) : rawTotal;
             const itemDiscount = rawBase * discountPct;
             const netVal = rawBase - itemDiscount;
             serviceSales += netVal;
@@ -130,9 +143,10 @@ export default function StaffProfile() {
       });
     });
 
-    const totalSales = serviceSales + productSales;
+    const totalSales = serviceSales + productSales + membershipSales;
     const servicesList = Object.values(svcMap).sort((a, b) => b.total - a.total);
     const productsList = Object.values(prodMap).sort((a, b) => b.total - a.total);
+    const membershipsList = Object.values(membershipMap).sort((a, b) => b.total - a.total);
 
     const daysPresent = attendanceForStaff.filter(a => a.status === "present" || a.status === "late").length;
     let totalHours = 0;
@@ -165,8 +179,10 @@ export default function StaffProfile() {
           const price = Number(item.price || 0);
           const rawTotal = qty * price;
 
+          const isProd = isProductItem(item, inventory);
+
           let netAmount = 0;
-          if (item.item_type === "product") {
+          if (isProd) {
             const itemDiscount = rawTotal * discountPct;
             netAmount = rawTotal - itemDiscount;
           } else if (item.item_type === "membership") {
@@ -174,7 +190,8 @@ export default function StaffProfile() {
             netAmount = rawTotal - itemDiscount;
           } else {
             const isInclusive = item.tax_inclusive !== false;
-            const rawBase = isInclusive ? (rawTotal / 1.05) : rawTotal;
+            const taxDivisor = 1 + (Number(inv?.tax_rate || 5) / 100);
+            const rawBase = isInclusive ? (rawTotal / taxDivisor) : rawTotal;
             const itemDiscount = rawBase * discountPct;
             netAmount = rawBase - itemDiscount;
           }
@@ -189,6 +206,7 @@ export default function StaffProfile() {
     return {
       serviceSales: Math.round(serviceSales),
       productSales: Math.round(productSales),
+      membershipSales: Math.round(membershipSales),
       totalSales: Math.round(totalSales),
       servicesCount,
       clientsCount: clientSet.size,
@@ -197,9 +215,10 @@ export default function StaffProfile() {
       totalHours: Math.round(totalHours * 10) / 10,
       servicesList,
       productsList,
+      membershipsList,
       monthlyTrend,
     };
-  }, [invoicesForStaff, attendanceForStaff, member, tipSplits]);
+  }, [invoicesForStaff, attendanceForStaff, member, tipSplits, inventory]);
 
 
   if (!member) {
@@ -292,6 +311,11 @@ export default function StaffProfile() {
           <div className="stat-label">Product Sales</div>
           <div className="stat-value">Rs {(kpis.productSales || 0).toLocaleString("en-IN")}</div>
           <div className="stat-sub">Retail products sold</div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-label">Membership Sales</div>
+          <div className="stat-value">Rs {(kpis.membershipSales || 0).toLocaleString("en-IN")}</div>
+          <div className="stat-sub">Memberships sold/renewed (not service revenue)</div>
         </div>
         <div className="stat-card">
           <div className="stat-label">Tips Earned</div>
@@ -389,6 +413,37 @@ export default function StaffProfile() {
         </div>
       </div>
 
+      {/* Memberships Sold/Renewed — kept separate from service revenue */}
+      <div className="table-wrap">
+        <div className="table-header">
+          <div className="table-title">🎟️ Memberships Sold / Renewed</div>
+        </div>
+        <div style={{ padding: "0 1.25rem" }}>
+          <table style={{ border: "none", width: "100%", margin: 0 }}>
+            <thead>
+              <tr style={{ background: "transparent", borderBottom: "1px solid var(--a-border)" }}>
+                <th style={{ padding: "0.75rem 0", fontSize: "0.75rem", textAlign: "left" }}>Membership</th>
+                <th style={{ padding: "0.75rem 0", fontSize: "0.75rem", textAlign: "center", width: "80px" }}>Qty</th>
+                <th style={{ padding: "0.75rem 0", fontSize: "0.75rem", textAlign: "right", width: "120px" }}>Net Sales</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(kpis.membershipsList || []).length === 0 ? (
+                <tr>
+                  <td colSpan={3} style={{ color: "var(--a-muted)", fontSize: "0.75rem", textAlign: "center", padding: "1.5rem 0" }}>No memberships sold</td>
+                </tr>
+              ) : (kpis.membershipsList || []).map((m) => (
+                <tr key={m.name} style={{ borderBottom: "1px solid var(--a-border)", background: "transparent" }}>
+                  <td style={{ padding: "0.6rem 0", fontSize: "0.78rem", fontWeight: 600 }}>{m.name}</td>
+                  <td style={{ padding: "0.6rem 0", fontSize: "0.78rem", textAlign: "center" }}>{m.qty}</td>
+                  <td style={{ padding: "0.6rem 0", fontSize: "0.78rem", textAlign: "right", fontWeight: 600 }}>Rs {Math.round(m.total).toLocaleString("en-IN")}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       {/* Monthly Revenue Trend */}
       <div className="table-wrap">
         <div className="table-header">
@@ -448,7 +503,9 @@ export default function StaffProfile() {
                 const price = Number(item.price || 0);
                 const rawTotal = qty * price;
 
-                if (item.item_type === "product") {
+                const isProd = isProductItem(item, inventory);
+
+                if (isProd) {
                   const itemDiscount = rawTotal * discountPct;
                   staffNet += (rawTotal - itemDiscount);
                 } else if (item.item_type === "membership") {
@@ -457,7 +514,8 @@ export default function StaffProfile() {
                 } else {
                   // service
                   const isInclusive = item.tax_inclusive !== false;
-                  const rawBase = isInclusive ? (rawTotal / 1.05) : rawTotal;
+                  const taxDivisor = 1 + (Number(inv?.tax_rate || 5) / 100);
+                  const rawBase = isInclusive ? (rawTotal / taxDivisor) : rawTotal;
                   const itemDiscount = rawBase * discountPct;
                   const netAmount = rawBase - itemDiscount;
                   staffNet += netAmount;
@@ -580,37 +638,52 @@ export default function StaffProfile() {
             <tr>
               <th>Date Issued</th>
               <th>Advance Amount</th>
+              <th>Disbursed From</th>
               <th>Target Deduct Month</th>
               <th>Status</th>
               <th>Notes / Reason</th>
             </tr>
           </thead>
           <tbody>
-            {memberAdvances.map(a => (
-              <tr key={a.id}>
-                <td style={{ fontSize: "0.78rem", fontWeight: 600 }}>
-                  {new Date(a.date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
-                </td>
-                <td style={{ fontWeight: "bold", color: "#b71c1c" }}>
-                  Rs {Number(a.amount || 0).toLocaleString("en-IN")}
-                </td>
-                <td style={{ fontSize: "0.78rem", fontWeight: 500 }}>
-                  {new Date(a.work_month + "-02").toLocaleDateString("en-IN", { month: "long", year: "numeric" })}
-                </td>
-                <td>
-                  <span className="badge" style={{ 
-                    background: a.status === "pending" ? "rgba(183,28,28,0.08)" : "rgba(46,125,50,0.08)", 
-                    color: a.status === "pending" ? "#b71c1c" : "#2e7d32", 
-                    padding: "2px 6px" 
-                  }}>
-                    {a.status.toUpperCase()}
-                  </span>
-                </td>
-                <td style={{ fontSize: "0.72rem", color: "var(--a-muted)" }}>{a.notes || "—"}</td>
-              </tr>
-            ))}
+            {memberAdvances.map(a => {
+              const isFromPocket = (a.notes || "").includes("Owner Pocket") || (a.notes || "").includes("Personal UPI");
+              return (
+                <tr key={a.id}>
+                  <td style={{ fontSize: "0.78rem", fontWeight: 600 }}>
+                    {new Date(a.date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
+                  </td>
+                  <td style={{ fontWeight: "bold", color: "#b71c1c" }}>
+                    Rs {Number(a.amount || 0).toLocaleString("en-IN")}
+                  </td>
+                  <td>
+                    <span className="badge" style={{
+                      background: isFromPocket ? "rgba(33, 150, 243, 0.08)" : "rgba(255, 152, 0, 0.08)",
+                      color: isFromPocket ? "#1976d2" : "#e65100",
+                      padding: "2px 8px"
+                    }}>
+                      {isFromPocket ? "💼 Pocket / Personal" : "🏧 Cash Drawer"}
+                    </span>
+                  </td>
+                  <td style={{ fontSize: "0.78rem", fontWeight: 500 }}>
+                    {new Date(a.work_month + "-02").toLocaleDateString("en-IN", { month: "long", year: "numeric" })}
+                  </td>
+                  <td>
+                    <span className="badge" style={{ 
+                      background: a.status === "pending" ? "rgba(183,28,28,0.08)" : "rgba(46,125,50,0.08)", 
+                      color: a.status === "pending" ? "#b71c1c" : "#2e7d32", 
+                      padding: "2px 6px" 
+                    }}>
+                      {a.status.toUpperCase()}
+                    </span>
+                  </td>
+                  <td style={{ fontSize: "0.72rem", color: "var(--a-muted)" }}>
+                    {a.notes ? a.notes.replace(/^\[Source:[^\]]+\]\s*/, "") : "—"}
+                  </td>
+                </tr>
+              );
+            })}
             {!memberAdvances.length && (
-              <tr><td colSpan={5} style={{ textAlign: "center", padding: "2rem", color: "var(--a-muted)" }}>No advances recorded for this employee.</td></tr>
+              <tr><td colSpan={6} style={{ textAlign: "center", padding: "2rem", color: "var(--a-muted)" }}>No advances recorded for this employee.</td></tr>
             )}
           </tbody>
         </table>

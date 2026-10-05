@@ -10,18 +10,24 @@ import {
   saveStaffPayment, 
   saveStaffAdvance, 
   deleteStaffAdvance, 
-  markSalaryPaid 
+  markSalaryPaid,
+  isProductItem
 } from "../../lib/api";
 
 export default function StaffManager() {
-  const { staff, attendance, invoices, tipSplits, staffPayments, staffAdvances, reload } = useAdmin();
+  const { staff, attendance, invoices, tipSplits, staffPayments, staffAdvances, inventory, reload } = useAdmin();
   const navigate = useNavigate();
+
+  const invProductNames = useMemo(() => {
+    return new Set((inventory || []).map(i => (i.name || "").trim().toLowerCase()));
+  }, [inventory]);
 
   const [activeTab, setActiveTab] = useState("directory"); // directory | performance | payroll
 
   // --- MODALS STATE ---
   const [staffModal, setStaffModal] = useState(null); // null | { name, role, phone, base_salary, upi_id, bank_account, joining_date, active }
   const [payoutModal, setPayoutModal] = useState(null); // null | { paymentId, staffId, workMonth, netPayable, staffName, paymentMethod, notes, paymentDate }
+  const [advanceModal, setAdvanceModal] = useState(null); // null | { staff_id, staff_name, amount, date, work_month, disbursed_from, notes }
   const [saving, setSaving] = useState(false);
 
   // --- TAB 2 (PERFORMANCE) FILTERS ---
@@ -241,9 +247,12 @@ export default function StaffManager() {
 
       const uniqueClients = new Set(staffInvoices.map(inv => inv.customer_id)).size;
 
-      // Net sales (split by services, products, totals)
+      // Net sales (split by services, products, memberships, totals)
+      // NOTE: membership revenue must NOT be counted as service revenue —
+      // service-based incentives must only reflect eligible service sales.
       let serviceSales = 0;
       let productSales = 0;
+      let membershipSales = 0;
       let servicesCount = 0;
 
       staffInvoices.forEach(inv => {
@@ -259,17 +268,24 @@ export default function StaffManager() {
             const price = Number(item.price || 0);
             const rawTotal = qty * price;
 
-            if (item.item_type === "product") {
+            const isProd = isProductItem(item, inventory);
+
+            if (isProd) {
               const itemDiscount = rawTotal * discountPct;
               productSales += (rawTotal - itemDiscount);
-            } else if (item.item_type === "membership") {
-              const itemDiscount = rawTotal * discountPct;
-              serviceSales += (rawTotal - itemDiscount);
-              servicesCount += qty;
+            } else if (item.item_type === "membership" || item.item_type === "wallet") {
+              const isWallet = item.item_type === "wallet" || item.service_name?.startsWith("Wallet Recharge");
+              if (!isWallet) {
+                const itemDiscount = rawTotal * discountPct;
+                membershipSales += (rawTotal - itemDiscount);
+              }
+              // Membership purchases/renewals are not a service performed —
+              // excluded from servicesCount and serviceSales.
             } else {
               // service
               const isInclusive = item.tax_inclusive !== false;
-              const rawBase = isInclusive ? (rawTotal / 1.05) : rawTotal;
+              const taxDivisor = 1 + (Number(inv.tax_rate || 5) / 100);
+              const rawBase = isInclusive ? (rawTotal / taxDivisor) : rawTotal;
               const itemDiscount = rawBase * discountPct;
               serviceSales += (rawBase - itemDiscount);
               servicesCount += qty;
@@ -277,7 +293,7 @@ export default function StaffManager() {
           }
         });
       });
-      const totalSales = serviceSales + productSales;
+      const totalSales = serviceSales + productSales + membershipSales;
 
       // Tips from splits
       const staffTips = (tipSplits || []).filter(ts => ts.staff_name && ts.staff_name.trim().toLowerCase() === sNameNorm && (
@@ -294,11 +310,12 @@ export default function StaffManager() {
         uniqueClients,
         serviceSales: Math.round(serviceSales),
         productSales: Math.round(productSales),
+        membershipSales: Math.round(membershipSales),
         totalSales: Math.round(totalSales),
         totalTips
       };
     });
-  }, [staff, attendance, invoices, tipSplits, perfFilterMode, perfMonth, perfStart, perfEnd]);
+  }, [staff, attendance, invoices, tipSplits, inventory, perfFilterMode, perfMonth, perfStart, perfEnd]);
 
   // Performance staff sub-ledger
   const staffPerformanceInvoices = useMemo(() => {
@@ -367,14 +384,17 @@ export default function StaffManager() {
           });
           count++;
         } else if (existingPayment.status === "unpaid") {
-          // Re-sync unpaid payment rows with current directory settings & transactions
+          // Re-sync unpaid payment rows with current attendance/tips/advances.
+          // IMPORTANT: base_salary is NOT re-synced from the staff directory here —
+          // it was snapshotted when this payroll row was first created, and must stay
+          // fixed to the salary that applied for that historical month even if the
+          // staff member's current salary has since changed.
           await saveStaffPayment({
             ...existingPayment,
-            base_salary: s.base_salary,
             days_present: existingPayment.days_present !== null && existingPayment.days_present !== undefined ? existingPayment.days_present : computedDaysPresent,
             tips_earned: computedTips,
             advances_deducted: computedAdvances,
-            net_payable: Number(s.base_salary || 0) + computedTips + Number(existingPayment.incentives || 0) - computedAdvances - Number(existingPayment.other_deductions || 0),
+            net_payable: Number(existingPayment.base_salary || 0) + computedTips + Number(existingPayment.incentives || 0) - computedAdvances - Number(existingPayment.other_deductions || 0),
             scheduled_payment_date: scheduledDateInput || existingPayment.scheduled_payment_date
           });
           updatedCount++;
@@ -426,7 +446,53 @@ export default function StaffManager() {
     }
   };
 
-  // Compute filtered advances
+  const handleRecordAdvance = async (e) => {
+    e.preventDefault();
+    if (!advanceModal?.staff_id) {
+      toast.error("Please select a staff member");
+      return;
+    }
+    if (!advanceModal?.amount || Number(advanceModal.amount) <= 0) {
+      toast.error("Please enter a valid advance amount");
+      return;
+    }
+    setSaving(true);
+    try {
+      const emp = (staff || []).find(st => st.id === advanceModal.staff_id);
+      await saveStaffAdvance({
+        staff_id: advanceModal.staff_id,
+        staff_name: emp ? emp.name : "Staff",
+        amount: Number(advanceModal.amount),
+        date: advanceModal.date || new Date().toISOString().slice(0, 10),
+        work_month: advanceModal.work_month || payrollMonth,
+        disbursed_from: advanceModal.disbursed_from || "owner_pocket",
+        notes: advanceModal.notes || ""
+      });
+      toast.success(`Advance of ₹${Number(advanceModal.amount).toLocaleString("en-IN")} recorded for ${emp?.name || "Staff"}`);
+      setAdvanceModal(null);
+      reload();
+    } catch (err) {
+      toast.error(err.message || "Failed to record advance");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteAdvance = async (id) => {
+    if (!window.confirm("Are you sure you want to delete this staff advance?")) return;
+    setSaving(true);
+    try {
+      await deleteStaffAdvance(id);
+      toast.success("Advance deleted successfully");
+      reload();
+    } catch (err) {
+      toast.error(err.message || "Failed to delete advance");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Compute filtered advances for the active payroll month
   const filteredAdvances = useMemo(() => {
     return (staffAdvances || []).filter(a => a.work_month === payrollMonth);
   }, [staffAdvances, payrollMonth]);
@@ -597,6 +663,7 @@ export default function StaffManager() {
                   <th style={{ textAlign: "center" }}>Unique Clients</th>
                   <th style={{ textAlign: "right" }}>Service Sales</th>
                   <th style={{ textAlign: "right" }}>Product Sales</th>
+                  <th style={{ textAlign: "right" }}>Membership Sales</th>
                   <th style={{ textAlign: "right" }}>Total Sales</th>
                   <th style={{ textAlign: "right" }}>Tips Earned</th>
                 </tr>
@@ -612,6 +679,7 @@ export default function StaffManager() {
                     <td style={{ textAlign: "center" }}>{s.uniqueClients}</td>
                     <td style={{ textAlign: "right" }}>Rs {s.serviceSales.toLocaleString("en-IN")}</td>
                     <td style={{ textAlign: "right" }}>Rs {s.productSales.toLocaleString("en-IN")}</td>
+                    <td style={{ textAlign: "right" }}>Rs {s.membershipSales.toLocaleString("en-IN")}</td>
                     <td style={{ textAlign: "right", fontWeight: "bold" }}>Rs {s.totalSales.toLocaleString("en-IN")}</td>
                     <td style={{ textAlign: "right", color: s.totalTips > 0 ? "var(--gold)" : "inherit" }}>Rs {s.totalTips.toLocaleString("en-IN")}</td>
                   </tr>
@@ -641,6 +709,21 @@ export default function StaffManager() {
                 </div>
               </div>
               <div style={{ display: "flex", gap: "0.5rem" }}>
+                <button 
+                  className="tbl-btn" 
+                  style={{ background: "rgba(183,28,28,0.08)", color: "#b71c1c", borderColor: "rgba(183,28,28,0.2)", fontWeight: 600 }}
+                  onClick={() => setAdvanceModal({
+                    staff_id: (staff || []).find(s => s.active)?.id || "",
+                    amount: "",
+                    date: new Date().toISOString().slice(0, 10),
+                    work_month: payrollMonth,
+                    disbursed_from: "owner_pocket",
+                    notes: ""
+                  })}
+                  disabled={saving}
+                >
+                  <DollarSign size={14} style={{ marginRight: 4 }} /> + Record Staff Advance
+                </button>
                 <button className="btn-add" onClick={handleGenerateWorksheet} disabled={saving}>
                   {saving ? "Generating..." : "Generate Month Worksheet"}
                 </button>
@@ -832,6 +915,87 @@ export default function StaffManager() {
               </tbody>
             </table>
           </div>
+
+          {/* Monthly Advances Ledger */}
+          <div className="table-wrap" style={{ marginTop: "2rem" }}>
+            <div className="table-header">
+              <div className="table-title" style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <DollarSign size={15} style={{ color: "#b71c1c" }} />
+                <span>Recorded Advances for {formatMonthLabel(payrollMonth)}</span>
+                <span className="badge" style={{ background: "rgba(183,28,28,0.08)", color: "#b71c1c", fontSize: "0.7rem", padding: "2px 8px" }}>
+                  Total: ₹{filteredAdvances.reduce((sum, a) => sum + Number(a.amount || 0), 0).toLocaleString("en-IN")}
+                </span>
+              </div>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th>Staff Member</th>
+                  <th>Date Issued</th>
+                  <th>Amount (₹)</th>
+                  <th>Disbursed From</th>
+                  <th>Status</th>
+                  <th>Notes</th>
+                  <th style={{ textAlign: "right" }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredAdvances.map(a => {
+                  const emp = (staff || []).find(st => st.id === a.staff_id);
+                  const isFromPocket = (a.notes || "").includes("Owner Pocket") || (a.notes || "").includes("Personal UPI");
+                  return (
+                    <tr key={a.id}>
+                      <td style={{ fontWeight: 600 }}>{emp ? emp.name : "Staff"}</td>
+                      <td>{new Date(a.date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}</td>
+                      <td style={{ fontWeight: "bold", color: "#b71c1c" }}>₹{Number(a.amount || 0).toLocaleString("en-IN")}</td>
+                      <td>
+                        <span className="badge" style={{
+                          background: isFromPocket ? "rgba(33, 150, 243, 0.08)" : "rgba(255, 152, 0, 0.08)",
+                          color: isFromPocket ? "#1976d2" : "#e65100",
+                          padding: "2px 8px"
+                        }}>
+                          {isFromPocket ? "💼 Owner Pocket / Personal" : "🏧 Cash Drawer"}
+                        </span>
+                      </td>
+                      <td>
+                        <span className="badge" style={{
+                          background: a.status === "pending" ? "rgba(183,28,28,0.08)" : "rgba(46,125,50,0.08)",
+                          color: a.status === "pending" ? "#b71c1c" : "#2e7d32",
+                          padding: "2px 6px"
+                        }}>
+                          {a.status.toUpperCase()}
+                        </span>
+                      </td>
+                      <td style={{ fontSize: "0.75rem", color: "var(--a-muted)" }}>
+                        {a.notes ? a.notes.replace(/^\[Source:[^\]]+\]\s*/, "") : "—"}
+                      </td>
+                      <td style={{ textAlign: "right" }}>
+                        {a.status === "pending" ? (
+                          <button 
+                            className="tbl-btn danger" 
+                            style={{ padding: "0.2rem 0.5rem", fontSize: "0.7rem" }} 
+                            onClick={() => handleDeleteAdvance(a.id)}
+                            disabled={saving}
+                          >
+                            <Trash2 size={12} style={{ marginRight: 3 }} /> Delete
+                          </button>
+                        ) : (
+                          <span style={{ fontSize: "0.7rem", color: "var(--a-muted)" }}>Settled</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+                {!filteredAdvances.length && (
+                  <tr>
+                    <td colSpan={7} style={{ textAlign: "center", padding: "2rem", color: "var(--a-muted)", fontSize: "0.8rem" }}>
+                      No advances recorded for {formatMonthLabel(payrollMonth)}. Use "+ Record Staff Advance" to disburse funds.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </>
       )}
 
@@ -954,6 +1118,111 @@ export default function StaffManager() {
               <button type="button" className="tbl-btn" onClick={() => setPayoutModal(null)}>Cancel</button>
               <button type="submit" form="payout-form" className="btn-add" disabled={saving} style={{ background: "#2e7d32" }}>
                 {saving ? "Recording..." : "Reconcile & Payout"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Tab 3: Record Staff Advance Modal */}
+      {advanceModal && (
+        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setAdvanceModal(null)}>
+          <div className="modal" style={{ maxWidth: 480 }}>
+            <div className="modal-header">
+              <div className="modal-title" style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <DollarSign size={16} style={{ color: "#b71c1c" }} />
+                <span>Record Staff Advance</span>
+              </div>
+              <button className="modal-close" onClick={() => setAdvanceModal(null)}>✕</button>
+            </div>
+            <div className="modal-body">
+              <form id="advance-form" onSubmit={handleRecordAdvance}>
+                <div className="form-group">
+                  <label className="form-label">Employee / Staff Member *</label>
+                  <select 
+                    className="form-input" 
+                    value={advanceModal.staff_id} 
+                    onChange={e => setAdvanceModal({ ...advanceModal, staff_id: e.target.value })} 
+                    required
+                  >
+                    <option value="" disabled>-- Select Staff --</option>
+                    {(staff || []).filter(s => s.active).map(s => (
+                      <option key={s.id} value={s.id}>{s.name} ({s.role})</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="form-row">
+                  <div className="form-group">
+                    <label className="form-label">Advance Amount (₹) *</label>
+                    <input 
+                      type="number" 
+                      min="1" 
+                      className="form-input" 
+                      value={advanceModal.amount} 
+                      onChange={e => setAdvanceModal({ ...advanceModal, amount: e.target.value })} 
+                      placeholder="e.g. 2000" 
+                      required 
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Disbursement Date *</label>
+                    <input 
+                      type="date" 
+                      className="form-input" 
+                      value={advanceModal.date} 
+                      onChange={e => setAdvanceModal({ ...advanceModal, date: e.target.value })} 
+                      required 
+                    />
+                  </div>
+                </div>
+
+                <div className="form-row">
+                  <div className="form-group">
+                    <label className="form-label">Disbursed From (Funding Source) *</label>
+                    <select 
+                      className="form-input" 
+                      value={advanceModal.disbursed_from} 
+                      onChange={e => setAdvanceModal({ ...advanceModal, disbursed_from: e.target.value })} 
+                      required
+                    >
+                      <option value="owner_pocket">💼 Owner Pocket / Personal Cash</option>
+                      <option value="personal_upi">📱 Personal UPI / Bank Transfer</option>
+                      <option value="cash_drawer">🏧 Salon Cash Drawer (Till)</option>
+                    </select>
+                    <div style={{ fontSize: "0.68rem", color: advanceModal.disbursed_from === "cash_drawer" ? "#e65100" : "#1976d2", marginTop: "0.25rem" }}>
+                      {advanceModal.disbursed_from === "cash_drawer" 
+                        ? "⚠️ Will reduce the daily Cash Register drawer count." 
+                        : "✅ Given from your pocket: tracks for salary deduction WITHOUT affecting cash drawer."}
+                    </div>
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Deduct in Salary Month *</label>
+                    <input 
+                      type="month" 
+                      className="form-input" 
+                      value={advanceModal.work_month} 
+                      onChange={e => setAdvanceModal({ ...advanceModal, work_month: e.target.value })} 
+                      required 
+                    />
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Advance Reason / Notes</label>
+                  <textarea 
+                    className="form-input" 
+                    rows="2" 
+                    value={advanceModal.notes} 
+                    onChange={e => setAdvanceModal({ ...advanceModal, notes: e.target.value })} 
+                    placeholder="e.g. Festival advance, emergency medical..."
+                  ></textarea>
+                </div>
+              </form>
+            </div>
+            <div className="modal-footer">
+              <button type="button" className="tbl-btn" onClick={() => setAdvanceModal(null)}>Cancel</button>
+              <button type="submit" form="advance-form" className="btn-add" disabled={saving} style={{ background: "#b71c1c" }}>
+                {saving ? "Recording..." : "Record Advance"}
               </button>
             </div>
           </div>

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { X, Wallet, ArrowDownRight, ArrowUpRight, Clock, PlusCircle, History, Sparkles, CheckCircle2, RotateCcw } from "lucide-react";
-import { rechargeCustomerWallet, fetchCustomerWalletHistory, calcActiveWalletBalance, revertWalletTransaction } from "../lib/api";
+import { X, Wallet, ArrowDownRight, ArrowUpRight, Clock, PlusCircle, History, Sparkles, CheckCircle2, RotateCcw, Trash2 } from "lucide-react";
+import { rechargeCustomerWallet, fetchCustomerWalletHistory, calcActiveWalletBalance, revertWalletTransaction, clearCustomerCashbacks, clearAllCashbacks } from "../lib/api";
 import toast from "react-hot-toast";
 
 export default function CustomerWalletModal({
@@ -135,6 +135,43 @@ export default function CustomerWalletModal({
       toast.error(err.message || "Failed to revert transaction");
     } finally {
       setRevertingId(null);
+    }
+  };
+
+  const handleClearCustomerCashbacks = async () => {
+    const custName = customer?.name || "this customer";
+    if (!window.confirm(`Clear all cashback credits for ${custName}? This will remove all cashback transactions and reduce their wallet balance accordingly.`)) return;
+
+    setLoadingHistory(true);
+    try {
+      const result = await clearCustomerCashbacks(customer.id);
+      toast.success(`Cleared ${result.count} cashback(s) totaling ₹${result.totalCleared.toLocaleString("en-IN")}`);
+      await loadHistory();
+      if (onWalletUpdated) {
+        onWalletUpdated(result.newBalance);
+      }
+    } catch (err) {
+      toast.error(err.message || "Failed to clear cashbacks");
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
+
+  const handleClearAllCashbacksGlobally = async () => {
+    if (!window.confirm("⚠️ DANGER: Are you sure you want to clear ALL historical cashbacks across ALL customers in the entire salon database? This cannot be undone.")) return;
+
+    setLoadingHistory(true);
+    try {
+      const result = await clearAllCashbacks();
+      toast.success(`Successfully cleared ${result.count} cashbacks totaling ₹${result.totalCleared.toLocaleString("en-IN")} across all customers!`);
+      await loadHistory();
+      if (onWalletUpdated) {
+        onWalletUpdated(0);
+      }
+    } catch (err) {
+      toast.error(err.message || "Failed to clear all cashbacks");
+    } finally {
+      setLoadingHistory(false);
     }
   };
 
@@ -337,6 +374,51 @@ export default function CustomerWalletModal({
           >
             <PlusCircle size={15} /> Recharge Wallet
           </button>
+
+          <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+            <button
+              type="button"
+              onClick={handleClearCustomerCashbacks}
+              disabled={loadingHistory}
+              title="Clear all cashback credits for this customer"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "4px",
+                padding: "0.35rem 0.65rem",
+                background: "rgba(183, 28, 28, 0.08)",
+                border: "1px solid rgba(183, 28, 28, 0.2)",
+                color: "#b71c1c",
+                borderRadius: "3px",
+                fontSize: "0.62rem",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              <Trash2 size={12} /> Clear Client Cashbacks
+            </button>
+            <button
+              type="button"
+              onClick={handleClearAllCashbacksGlobally}
+              disabled={loadingHistory}
+              title="Clear all historical cashbacks across all customers in the database"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "4px",
+                padding: "0.35rem 0.65rem",
+                background: "#b71c1c",
+                border: "none",
+                color: "#fff",
+                borderRadius: "3px",
+                fontSize: "0.62rem",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              <Trash2 size={12} /> Clear ALL System Cashbacks
+            </button>
+          </div>
         </div>
 
         {/* Tab Content */}
